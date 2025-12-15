@@ -2,6 +2,7 @@
 title: Custom OG Images
 tags:
   - feature/emitter
+render_with_liquid: false
 ---
 
 The Custom OG Images emitter plugin generates social media preview images for your pages. It uses [satori](https://github.com/vercel/satori) to convert HTML/CSS into images, allowing you to create beautiful and consistent social media preview cards for your content.
@@ -149,6 +150,7 @@ This example will generate images that look as follows:
 | ------------------------------------------ | ----------------------------------------- |
 | ![[custom-social-image-preview-light.png]] | ![[custom-social-image-preview-dark.png]] |
 
+{% raw %}
 ```tsx
 import { SatoriOptions } from "satori/wasm"
 import { GlobalConfiguration } from "../cfg"
@@ -231,11 +233,13 @@ export const customImage: SocialImageOptions["imageStructure"] = (
   )
 }
 ```
+{% endraw %}
 
 ### Advanced Example
 
 The following example includes a customized social image with a custom background and formatted date:
 
+{% raw %}
 ```typescript title="custom-og.tsx"
 export const og: SocialImageOptions["Component"] = (
   cfg: GlobalConfiguration,
@@ -358,3 +362,4 @@ export const og: SocialImageOptions["Component"] = (
   )
 }
 ```
+{% endraw %}
