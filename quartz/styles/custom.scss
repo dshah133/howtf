@@ -1,3 +1,575 @@
 @use "./base.scss";
 
-// put your custom CSS here!
+// Kernel-inspired, minimal blog design
+
+// Smooth transitions
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+}
+
+// Page title - terminal prompt style
+.page-title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.25rem !important;
+  margin: 0 !important;
+
+  a {
+    color: var(--secondary);
+
+    &::before {
+      content: "~/";
+      color: var(--gray);
+      font-weight: 400;
+    }
+  }
+}
+
+// Main content area - wider for readability
+.center {
+  max-width: 760px;
+}
+
+// Article content
+article {
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: var(--dark);
+  }
+
+  h1 {
+    font-size: 2.25rem;
+    line-height: 1.2;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+
+    &::before {
+      content: "## ";
+      color: var(--gray);
+      font-family: var(--codeFont);
+      font-weight: 400;
+    }
+  }
+
+  h3 {
+    font-size: 1.25rem;
+    margin-top: 2rem;
+
+    &::before {
+      content: "### ";
+      color: var(--gray);
+      font-family: var(--codeFont);
+      font-weight: 400;
+      font-size: 0.9em;
+    }
+  }
+
+  p {
+    line-height: 1.8;
+    color: var(--darkgray);
+    font-size: 1.0625rem;
+  }
+
+  // Code blocks
+  pre {
+    border-radius: 8px;
+    border: 1px solid var(--lightgray);
+    padding: 1rem 1.25rem;
+    background: var(--lightgray) !important;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+  }
+
+  code {
+    font-size: 0.85rem;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    background: var(--lightgray);
+    color: var(--secondary);
+    font-weight: 500;
+  }
+
+  pre code {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font-weight: normal;
+    font-size: 0.85rem;
+    line-height: 1.65;
+  }
+
+  // Lists
+  ul, ol {
+    padding-left: 1.25rem;
+
+    li {
+      margin-bottom: 0.625rem;
+      line-height: 1.75;
+
+      &::marker {
+        color: var(--gray);
+        font-family: var(--codeFont);
+      }
+    }
+  }
+
+  // Links
+  a {
+    color: var(--secondary);
+    text-decoration: none;
+    font-weight: 500;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  // Blockquotes - kernel log style
+  blockquote {
+    border-left: 3px solid var(--secondary);
+    padding: 0.75rem 1.25rem;
+    margin: 1.5rem 0;
+    background: var(--highlight);
+    border-radius: 0 6px 6px 0;
+    font-style: normal;
+    position: relative;
+
+    &::before {
+      content: "/*";
+      position: absolute;
+      left: 1.25rem;
+      top: -0.5rem;
+      font-family: var(--codeFont);
+      font-size: 0.75rem;
+      color: var(--gray);
+      background: var(--light);
+      padding: 0 0.25rem;
+    }
+
+    &::after {
+      content: "*/";
+      position: absolute;
+      right: 1rem;
+      bottom: -0.5rem;
+      font-family: var(--codeFont);
+      font-size: 0.75rem;
+      color: var(--gray);
+      background: var(--light);
+      padding: 0 0.25rem;
+    }
+
+    p {
+      color: var(--dark);
+      margin: 0;
+    }
+  }
+
+  // Images
+  img {
+    border-radius: 8px;
+  }
+}
+
+// Search box - minimal
+#search-container {
+  input {
+    border-radius: 6px;
+    border: 1px solid var(--lightgray);
+    background: var(--light);
+    padding: 0.5rem 0.75rem;
+    font-family: var(--codeFont);
+    font-size: 0.875rem;
+
+    &:focus {
+      border-color: var(--secondary);
+      outline: none;
+    }
+
+    &::placeholder {
+      color: var(--gray);
+    }
+  }
+}
+
+// Footer - kernel version style
+footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--lightgray);
+
+  p {
+    font-size: 0.8rem;
+    color: var(--gray);
+    font-family: var(--codeFont);
+
+    &::before {
+      content: "// ";
+    }
+  }
+}
+
+// Tags - syscall style
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+
+  a {
+    background: transparent;
+    border: 1px solid var(--lightgray);
+    border-radius: 4px;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-family: var(--codeFont);
+    color: var(--gray);
+    text-decoration: none !important;
+
+    &::before {
+      content: "#";
+      color: var(--secondary);
+    }
+
+    &:hover {
+      border-color: var(--secondary);
+      color: var(--secondary);
+    }
+  }
+}
+
+// Content meta - dmesg timestamp style
+.content-meta {
+  font-size: 0.8rem;
+  color: var(--gray);
+  font-family: var(--codeFont);
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--lightgray);
+
+  &::before {
+    content: "[";
+  }
+
+  &::after {
+    content: "]";
+  }
+}
+
+// Table of contents - minimal
+.toc {
+  .depth-1 > li {
+    font-weight: 500;
+  }
+
+  a {
+    border: none;
+    color: var(--gray);
+    font-size: 0.8rem;
+    padding: 0.2rem 0;
+    display: block;
+    font-family: var(--codeFont);
+
+    &:hover {
+      color: var(--secondary);
+    }
+
+    &.in-view {
+      color: var(--secondary);
+    }
+  }
+}
+
+// Dark mode toggle
+.darkmode {
+  svg {
+    transition: transform 0.2s ease;
+  }
+
+  &:hover svg {
+    transform: rotate(15deg);
+  }
+}
+
+// Homepage
+body[data-slug="index"] {
+  // Hide meta and title on homepage
+  .content-meta,
+  .article-title,
+  article h1:first-of-type {
+    display: none;
+  }
+
+  article {
+    > p:first-of-type {
+      font-size: 1.0625rem;
+      line-height: 1.8;
+      color: var(--darkgray);
+    }
+  }
+}
+
+// Blog post list
+.section-li {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--lightgray);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    .section {
+      color: var(--secondary);
+    }
+  }
+
+  .section {
+    font-weight: 500;
+    color: var(--dark);
+    font-size: 1rem;
+    transition: color 0.2s ease;
+  }
+
+  .meta {
+    color: var(--gray);
+    font-size: 0.8rem;
+    font-family: var(--codeFont);
+  }
+}
+
+// Smooth scrolling
+html {
+  scroll-behavior: smooth;
+}
+
+// Selection
+::selection {
+  background: var(--highlight);
+  color: var(--dark);
+}
+
+// Callouts
+.callout {
+  border-radius: 6px;
+  border: 1px solid var(--lightgray);
+}
+
+// Subtle page load
+article {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+// Hide graph if it somehow appears
+.graph {
+  display: none;
+}
+
+// Backlinks - hide
+.backlinks {
+  display: none;
+}
+
+// Remove breadcrumbs visual noise
+.breadcrumb-container {
+  display: none;
+}
+
+// Sidebar toggle button
+.sidebar-toggle {
+  background: transparent;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray);
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--secondary);
+  }
+
+  svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Sidebar visibility based on toggle state
+html[sidebar-state="hidden"] {
+  #quartz-body {
+    grid-template-columns: 0 1fr 0 !important;
+  }
+
+  .left.sidebar {
+    padding: 0 !important;
+    width: 0;
+    overflow: visible;
+
+    > * {
+      display: none !important;
+    }
+
+    // Keep only the toggle button visible
+    > .flex-component:first-child {
+      display: flex !important;
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 100;
+      background: var(--light);
+      border: 1px solid var(--lightgray);
+      border-radius: 6px;
+      padding: 0.5rem;
+      margin: 0;
+      width: auto;
+
+      // Hide title, show only toggle
+      > div:first-child {
+        display: none !important;
+      }
+    }
+  }
+}
+
+// Left sidebar styling
+.left.sidebar {
+  // Title + toggle row - add border
+  > .flex-component:first-child {
+    border: 1px solid var(--lightgray);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    align-items: center;
+  }
+
+  // Search + darkmode row - styled inputs
+  > .flex-component:nth-child(3),
+  > .flex-component:nth-child(2):not(.mobile-only) {
+    gap: 0.5rem;
+  }
+}
+
+// Search button styling for sidebar
+.search {
+  .search-button {
+    border: 1px solid var(--lightgray);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+      border-color: var(--secondary);
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+      color: var(--gray);
+    }
+
+    p {
+      margin: 0;
+      color: var(--gray);
+      font-size: 0.875rem;
+    }
+  }
+}
+
+// Darkmode button styling
+.darkmode {
+  border: none;
+  background: transparent;
+  padding: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray);
+
+  &:hover {
+    color: var(--secondary);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Recent notes sidebar - kernel style
+.recent-notes {
+  margin-top: 1.5rem;
+
+  > h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--gray);
+    font-family: var(--codeFont);
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+
+    &::before {
+      content: "// ";
+    }
+  }
+
+  .recent-ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+
+    .recent-li {
+      margin-bottom: 0.5rem;
+
+      .section {
+        .desc h3 {
+          font-size: 0.875rem;
+          font-weight: 500;
+          margin: 0;
+          line-height: 1.4;
+
+          a {
+            color: var(--dark);
+            text-decoration: none;
+
+            &:hover {
+              color: var(--secondary);
+            }
+          }
+        }
+
+        .meta {
+          display: none;
+        }
+      }
+    }
+  }
+}
