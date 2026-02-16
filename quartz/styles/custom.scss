@@ -418,6 +418,56 @@ article details {
   }
 }
 
+// Appendix-level collapsible sections (contain headings in summary)
+article details.appendix {
+  border: none;
+  border-top: 1px solid var(--lightgray);
+  border-radius: 0;
+  margin: 3rem 0 0 0;
+  overflow: visible;
+
+  summary {
+    padding: 0;
+    background: transparent;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::before {
+      content: "▸";
+      font-family: var(--codeFont);
+      font-size: 0.85rem;
+      color: var(--gray);
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    &:hover::before {
+      color: var(--secondary);
+    }
+
+    h2 {
+      display: inline;
+      margin: 0;
+      font-size: 1.5rem;
+    }
+  }
+
+  &[open] summary::before {
+    transform: rotate(90deg);
+  }
+
+  &[open] summary {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+}
+
 // Callouts
 .callout {
   border-radius: 6px;
