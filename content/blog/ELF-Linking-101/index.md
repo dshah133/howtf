@@ -886,30 +886,15 @@ INTERP ... Requesting program interpreter: /lib64/ld-linux-x86-64.so.2
 This is the first thing the kernel looks for. If found, the kernel maps this interpreter into memory and passes control to it.
 
 **3. The `LOAD` Segments (The Real Memory Map)**
+
 These 4 segments tell the Kernel exactly how to set up the Virtual Memory Areas (VMAs).
 
-* **LOAD #1 (Metadata) - `Flags R` (Read-Only)**
-* **Offset:** `0x000`
-* **Content:** The ELF Header, Program Headers, and dynamic linking metadata (`.hash`, `.dynsym`).
-* **Why?** This data is needed by the Loader, but it should never be executed (security) or written to (integrity).
-
-
-* **LOAD #2 (The Code) - `Flags R E` (Read + Execute)**
-* **Offset:** `0x1000`
-* **Content:** `.text` (your code), `.init`, `.plt`.
-* **Why?** This is the **only** memory region where the CPU is allowed to fetch instructions. If you try to execute code anywhere else, the CPU throws an NX (No-Execute) fault.
-
-
-* **LOAD #3 (Constants) - `Flags R` (Read-Only)**
-* **Offset:** `0x2000`
-* **Content:** `.rodata` (Global constants like string literals `"Hello World"`), `.eh_frame` (Exception handling data).
-* **Why?** Separating this from the executable code prevents "Return-Oriented Programming" (ROP) gadgets from using your data bytes as instructions.
-
-
-* **LOAD #4 (The Data) - `Flags RW` (Read + Write)**
-* **Offset:** `0x3d98`
-* **Content:** `.data` (Global variables), `.bss`, and the **GOT** (Global Offset Table).
-* **Why?** This is the only dirty memory. It is backed by the binary file on disk *until* you write to it, at which point the OS creates a private copy (Copy-on-Write) in RAM.
+| Segment | Flags | Offset | Content | Purpose |
+|---------|-------|--------|---------|---------|
+| **LOAD #1** (Metadata) | `R` | `0x000` | ELF Header, Program Headers, dynamic linking metadata (`.hash`, `.dynsym`) | Needed by the Loader, but should never be executed (security) or written to (integrity). |
+| **LOAD #2** (Code) | `R E` | `0x1000` | `.text` (your code), `.init`, `.plt` | The **only** region where the CPU can fetch instructions. Executing code anywhere else triggers an NX fault. |
+| **LOAD #3** (Constants) | `R` | `0x2000` | `.rodata` (string literals, constants), `.eh_frame` (unwind info) | Separated from executable code to prevent ROP gadgets from using data bytes as instructions. |
+| **LOAD #4** (Data) | `RW` | `0x3d98` | `.data` (globals), `.bss`, **GOT** (Global Offset Table) | The only writable memory. Backed by the file on disk until written, then Copy-on-Write kicks in. |
 
 
 
