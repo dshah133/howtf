@@ -814,6 +814,9 @@ Linux's PTI documentation calls out an additional nuance: PTI uses a **trampolin
 
 Here is the detailed explanation of the `readelf -l` output, formatted to fit directly into the "Mapping the Memory" section.
 
+<details>
+<summary>readelf -l ./dynamic_app (full output)</summary>
+
 ```bash
 root@container:/code# readelf -l ./dynamic_app
 
@@ -869,6 +872,8 @@ Program Headers:
    12     .init_array .fini_array .dynamic .got
 ```
 
+</details>
+
 This output confirms that modern binaries are far more complex than the simple "Code vs. Data" model. The Linker has split our binary into **4 distinct memory regions (LOAD segments)** to maximize security and efficiency.
 
 ### Explanation of the Output
@@ -922,6 +927,9 @@ The absence of the `E` flag here is critical. It tells the Kernel: "The stack is
 
 Once the app starts running we can check where it finally gets loaded (yes, we cheated and added a 60 second sleep in main.c to get the pid). We see that the final loaded address has a bias of ≈ 0x555555554000 for the PT_LOAD sections. That's the load_bias mentioned in Section 2.2 that the kernel adds for ASLR purposes.
 
+<details>
+<summary>cat /proc/$pid/maps (full process memory map)</summary>
+
 ```bash
 root@container:/code# ./dynamic_app & pid=$!
 root@container:/code# cat /proc/$pid/maps | sed -n '1,120p'
@@ -967,6 +975,8 @@ ffffb2901000-ffffb2903000 r--p 00000000 00:00 0                          [vvar]
 ffffb2903000-ffffb2904000 r-xp 00000000 00:00 0                          [vdso]
 ffffc85bd000-ffffc85de000 rw-p 00000000 00:00 0                          [stack]
 ```
+
+</details>
 
 ## Appendix E: The Loader's Bootstrap (Self-Relocation)
 
@@ -1028,6 +1038,9 @@ Step 1 finds the bias (often via RIP-relative tricks). Step 2 applies `R_X86_64_
    `map[JMPREL]` -> address of `.rela.plt` section, this has all the PLT relocations
    and a few more..
 
+<details>
+<summary>readelf -p .dynstr and readelf -d (string table + dynamic section)</summary>
+
 ```bash
 # see how libnames (./libmath.so and libc.so.6 are here, same for $ORIGIN)
 root@container:/code# readelf -p .dynstr ./dynamic_app
@@ -1080,6 +1093,8 @@ Dynamic section at offset 0x2dd8 contains 28 entries:
  0x0000000000000000 (NULL)               0x0
 ```
 
+</details>
+
 
 5. Iterates through `DT_NEEDED` entries. In our case it will be `./libmath.so` and `libc.so` as we can see in the output.
 
@@ -1093,6 +1108,9 @@ Dynamic section at offset 0x2dd8 contains 28 entries:
 ### F.1 Relocations for the Main Executable
 
 First, let's see how the relocations information looks in our ELF binary.
+
+<details>
+<summary>readelf -rW ./dynamic_app (relocation tables)</summary>
 
 ```bash
 root@container:/code# readelf -rW ./dynamic_app
@@ -1116,6 +1134,8 @@ Relocation section '.rela.plt' at offset 0x640 contains 2 entries:
 0000000000003fd0  0000000600000007 R_X86_64_JUMP_SLOT     0000000000000000 sleep@GLIBC_2.2.5 + 0
 ```
 
+</details>
+
 It will go through each of the non-PLT relocations (i.e. in .rela.dyn) first.
 
 * Each entry is decoded into `r_info` first: `r_info = index of this symbol into .dynsym (high 32 bits) || relocation type (low 32 bits)`.
@@ -1129,6 +1149,9 @@ It will go through each of the non-PLT relocations (i.e. in .rela.dyn) first.
 * For `__libc_start_main`, it will look at the `.dynsym[1]` entry. 1 because, `r_info = 0000000100000006` (first 32 bits is the index as mentioned before).
 
 As we can see, index 1 has __libc_start_main.
+<details>
+<summary>readelf -sW --dyn-syms ./dynamic_app (dynamic symbol table)</summary>
+
 ```bash
 root@container:/code# readelf -sW --dyn-syms ./dynamic_app
 
@@ -1144,6 +1167,8 @@ Symbol table '.dynsym' contains 8 entries:
      7: 0000000000000000     0 FUNC    WEAK   DEFAULT  UND __cxa_finalize@GLIBC_2.2.5 (3)
      ...
 ```
+
+</details>
 
   * Loader will see that `__libc_start_main` is not defined (UND, usually indicated by sym_value being 0). It will try to find it. It will check where is this defined. Loader will get the symbol name (fetches it via `.dynstr[dynsym[1].symbol_name]`).
   
@@ -1286,24 +1311,13 @@ Line 2 is the secret sauce: it pushes the relocation index so the resolver can f
 
 At last, the loader takes care of the sections defined at RELRO. Revisiting output of `readelf -l` from [Appendix D](#appendix-d-segments-deep-dive).
 
-Two things stand out:
+The relevant excerpt from `readelf -l`:
 
-```bash
-root@container:/code# readelf -l ./dynamic_app
-
-Elf file type is DYN (Position-Independent Executable file)
-Entry point 0x1060
-There are 13 program headers, starting at offset 64
-
-Program Headers:
-  ...
-  GNU_RELRO      0x0000000000002d98 0x0000000000003d98 0x0000000000003d98
-                 0x0000000000000268 0x0000000000000268  R      0x1
-  
+```text
+  GNU_RELRO      0x...2d98 0x...3d98 0x...3d98
+                 0x...0268 0x...0268  R      0x1
 
  Section to Segment mapping:
-  Segment Sections...
-   ...
    12     .init_array .fini_array .dynamic .got
 ```
 
