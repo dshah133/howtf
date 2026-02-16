@@ -370,48 +370,46 @@ For many teams, this complexity is a feature: when a security vulnerability is f
 
 But for hyperscalers (like Meta, Google, and Netflix), this complexity is often a liability. They may opt for static linking, where every dependency is merged into a single executable file.
 
-### 6.1 The Motivation: Why Link Statically?
+### 6.1 Why Hyperscalers Link Statically
 
-At the scale of deploying a binary to 100,000 servers, the tradeoffs shift. Disk space still matters, but hermeticity and startup speed tend to matter more.
+Companies like Google and Meta prefer to statically link their production services. The reasons are practical:
 
-**The "dependency hell" problem (hermeticity):**  
-Imagine a service that depends on PyTorch, which depends on `libcuda.so`, which depends on `libgcc_s.so`. If you deploy a dynamically linked binary to a production machine that has a slightly different version of `libgcc`, your service crashes. With static linking, the binary becomes a self-contained universe: if it works on the build machine, it works in production.
+**Hermeticity (the "dependency hell" problem):**
+Imagine a service that depends on PyTorch, which depends on `libcuda.so`, which depends on `libgcc_s.so`. If you deploy a dynamically linked binary to a production machine that has a slightly different version of `libgcc`, your service crashes at 3 AM. With static linking, the binary is self-contained: if it works on the build machine, it works in production.
 
-**The "startup tax":**  
-In a massive C++ application with thousands of shared libraries, the dynamic loader can spend significant time just looking up symbols and processing relocations before `main()` even starts. Static linking eliminates this entirely: there is no loader, no symbol resolution, and no PLT/GOT patching.
+**Startup speed:**
+Dynamic linking waits until runtime to resolve symbols, and for a large program this cost is not trivial. It can take seconds to calculate relocation mappings for large applications with hundreds of shared libraries. The loader must walk symbol hash tables, process relocations, and patch GOT entries, all the machinery we traced in Parts II through IV, before `main()` even starts. Static linking eliminates this entirely: there is no loader, no symbol resolution, and no PLT/GOT patching at runtime.
 
-**Real-world example: Meta's build system (Buck2)**  
-Meta's build systems (Buck/Buck2) were designed to manage trade-offs using build modes in practice. (This is based on my experience working on Meta's build infrastructure.)
+**Real-world example: Meta's build system (Buck2)**
+Meta's build systems (Buck/Buck2) were designed to manage these trade-offs using build modes. (This is based on my experience working on Meta's build infrastructure.)
 
-- `@mode/dev` (dynamic): used on laptops for fast iteration.
-- `@mode/opt` (static / more hermetic): used for production to guarantee performance and hermeticity.
+- `@mode/dev` (dynamic): used on developer laptops for fast iteration and quick incremental builds.
+- `@mode/opt` (static / more hermetic): used for production deployments to guarantee performance and hermeticity.
 
-### 6.2 The Consequence: The "4GB Trap" & Linker Groups
+Buck2's open-source configuration system exposes `dev` and `opt` as standard constraint values, and the choice between them changes how every C++ dependency in the graph is linked.
 
-Static linking sounds perfect until physics gets in the way. When you bundle an entire AI stack into one file, the binary can grow massively large (gigabytes).
+### 6.2 The Consequence: The 2 GiB Relocation Barrier
 
-**The relocation overflow (the ±2 GiB reach limit)**  
-On x86‑64, the standard `call` instruction uses a 32‑bit signed PC‑relative offset. That means a call target must be within roughly **±2 GiB** of the call site.
+Static linking sounds perfect until physics gets in the way. When you bundle an entire AI stack, or the transitive closure of a massive monorepo, into a single binary, it can grow to gigabytes. Binaries beyond 25 GiB (including debug symbols) have been observed at companies operating at this scale. At that point, a fundamental x86-64 limitation surfaces.
 
-If your static binary grows so large that the linker can't place things within reach using the default code model, you can see:
+Recall from Step 4 in Section 5.2: the `call` instruction uses a 32-bit signed PC-relative offset. That gives it a reach of roughly **±2 GiB**. If the linker cannot place a call target within that range, the link fails:
 
 ```
 relocation truncated to fit: R_X86_64_PC32
 ```
 
-Engineers often refer to this family of issues colloquially as the "4GB trap," but the underlying technical limit in the common case is the **signed 32-bit PC-relative reach**.
+This problem is well-documented in the LLVM and GCC communities, and has been encountered at Google with large x86-64 executables, particularly when built with instrumentations like `-fprofile-generate` or sanitizers that inflate code and data size. Engineers sometimes refer to this colloquially as the "4 GB trap," but the underlying limit is the **signed 32-bit reach of PC-relative relocations**.
 
-**The solution: linker groups**  
-Hyperscalers introduced "linker groups" (Buck2: `prebuilt_cxx_library_group`). Instead of 10,000 tiny shared objects (too slow) or 1 giant static binary (too big), they group related code into islands.
+The brute-force fix is to compile with `-mcmodel=large`, which replaces the 5-byte relative `call` with a 12-byte `movabs` + `call` sequence that can reach any address. But this bloats every call site and increases register pressure, a steep price when you have millions of them.
 
-- **Approach:** define a group (e.g., "the AI stack"). Everything inside is statically linked together into one medium-sized `.so`.
-- **Result:** the main application dynamically links against just 5 or 6 large groups.
+**The practical solution: link groups**
+Rather than choosing between 10,000 tiny shared objects (too slow to load) or 1 giant static binary (too big to link), hyperscalers split the difference. They group related code into "islands": everything inside a group is statically linked together into one medium-sized `.so`, and the main binary dynamically links against just a handful of these groups.
 
-This balances the best of both worlds: it reduces startup overhead (resolve 5 groups instead of 50,000 DSOs) while keeping binary sizes manageable.
+Buck2 has this concept built directly into its C++ rules. A `prebuilt_cxx_library_group` bundles related libraries that must be linked together, and the `auto_link_groups` and `link_group_map` attributes on `cxx_binary` let the build system automatically partition the dependency graph into groups. The result: you might resolve 5 or 6 groups at startup instead of 50,000 individual DSOs, while keeping each group well within the 2 GiB barrier.
 
 ### 6.3 The Execution Flow (No Loader Involved)
 
-If you build a fully static binary, the execution flow changes drastically. The loader (`ld-linux.so`) is removed from the picture.
+If you build a fully static binary, the execution flow changes drastically. The loader (`ld-linux.so`) is removed from the picture entirely.
 
 You can see this logic in the Linux kernel source `fs/binfmt_elf.c`. When you run a binary, the kernel checks for the `PT_INTERP` segment (which specifies the loader).
 
@@ -421,7 +419,6 @@ You can see this logic in the Linux kernel source `fs/binfmt_elf.c`. When you ru
 - **The new beginning:** execution usually begins at `_start` (from `crt1.o`), which sets up the stack and calls `main`.
 
 There is no GOT patching. There is no PLT indirection. The CPU just jumps straight into your code.
-
 
 Everything we have covered so far happens before `main()` starts. But sometimes you need to load code *after* the program is already running: plugins, optional features, or hot-loaded extensions. This is what `dlopen` and `dlsym` provide. See [Appendix H: Runtime Loading (dlopen/dlsym)](#appendix-h-runtime-loading-dlopendlsym) for how the loader handles this and why it reuses much of the same machinery we have already seen.
 
