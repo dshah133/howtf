@@ -2,8 +2,6 @@
 title: "The Architecture of Execution: A Deep Dive into ELF, Linking, and Loading"
 ---
 
-# The Architecture of Execution: A Deep Dive into ELF, Linking, and Loading
-
 **From the terminal to `main()` ... and back to the source.**
 
 We have all been there. You deploy a binary that worked perfectly on your development machine, but the production environment crashes with:
@@ -232,15 +230,15 @@ Because `dynamic_app` has this header, the kernel maps the dynamic loader (`ld-l
 
 ---
 
-## The Loader Takes Control (User Mode)
+## Part III: The Loader Takes Control (User Mode)
 
 Control returns to User Mode. The program running is now the dynamic loader (`ld-linux.so`), appearing in `glibc` source as `elf/rtld.c`.
 
-**3.1 Self-Relocation (The Bootstrap)**
+### 3.1 Self-Relocation (The Bootstrap)
 
 The loader itself is also just a program, just a bit special one as it wakes up in a hostile environment. Because of ASLR, it has been loaded at a random address, meaning all its internal pointers to global variables are wrong. It cannot call functions or access static data yet. Before it can do anything else, the loader must fix these addresses. This happens in the `_dl_start` path. See [Appendix E: The Loader's Bootstrap](#appendix-e-the-loaders-bootstrap-self-relocation) for more details.
 
-**3.2 Dependency Discovery**
+### 3.2 Dependency Discovery
 
 Once the loader has healed itself, it becomes a fully functional C program running inside your process. It can now inspect your `dynamic_app`. It reads the `PT_DYNAMIC` segment to find `DT_NEEDED` tags, then recursively finds `libmath.so` and `libc.so.6` (checking `RUNPATH`/`RPATH`, `LD_LIBRARY_PATH`, and caches), and maps them into the current process's memory space using `mmap`.
 
@@ -254,7 +252,7 @@ It populates the GOT based on the finally loaded addresses. The GOT acts as a ca
 
 
 
-## 4. The Handoff (Loader → User)
+## Part IV: The Handoff (Loader → User)
 The loader is now ready to hand control to your application. But it doesn't just call `main()`. In fact, it doesn't even know `main` exists.
 
 The transition from the loader to your code happens in three steps.
@@ -269,7 +267,7 @@ The CPU lands at a function called `_start`. This is not your code. It is a smal
 
 
 
-## 5. The Flashback (Build Time)
+## Part V: The Flashback (Build Time)
 
 When we run `gcc -c main.c`, GCC acts as a driver. It runs `cc1` (compiler) and `as` (assembler) to produce `main.o`.
 
@@ -364,7 +362,7 @@ It groups read-only sections (`.text`, `.plt`, `.rodata`) into segments so the k
 
 ---
 
-## 6. Static Linking
+## Part VI: Static Linking
 
 We have just spent multiple sections detailing the immense complexity of dynamic loading: the PLT, the GOT, the loader, runtime patching, and startup costs.
 
@@ -446,9 +444,7 @@ The "simple" act of running `./app` is a relay race passing the baton between th
 In a follow-up post, we will see how this machinery can fail at scale. We will trace a production incident where two collective communication libraries were linked into the same binary, causing a symbol collision that silently redirected RDMA verb calls to the wrong device. Understanding the PLT/GOT resolution pipeline was the key to diagnosing it.
 
 
-## Appendices
-
-### Appendix A: The Cross-Architecture Magic (Rosetta & QEMU)
+## Appendix A: The Cross-Architecture Magic (Rosetta & QEMU)
 
 If you ran this lab on an Apple Silicon Mac (M1/M2/M3) or a Windows ARM machine, you likely noticed that the x86-64 binary simply executed. It didn't crash, and it didn't require a manual emulator command.
 
@@ -474,12 +470,14 @@ Either way, the translator must preserve **architectural semantics**, not just i
 * **macOS (Rosetta + Hardware TSO):** On macOS, Docker Desktop runs Linux containers inside a lightweight Linux VM and can integrate Rosetta into that VM so x86‑64 Linux binaries can run on Apple Silicon. Apple solved the memory ordering bottleneck at the silicon level. Their M-series chips include a hardware switch to enable **Total Store Ordering (TSO)**. This allows the Rosetta translator to run without the heavy software barrier overhead, achieving near-native speeds.
 
 
-**How Rosetta gets into the VM (VirtioFS Injection)**
+### 2) How Rosetta Gets into the VM (VirtioFS Injection)
+
 The Linux kernel inside our Docker VM does not ship with Rosetta. It is injected from macOS. Docker uses the **Apple Virtualization Framework (AVF)** to create the Linux VM. AVF exposes a specialized directory share called [`VZLinuxRosettaDirectoryShare`](https://developer.apple.com/documentation/virtualization/vzlinuxrosettadirectoryshare). This is not a standard network share; it is a high-performance channel handled via [**VirtioFS**](https://virtio-fs.gitlab.io/) (Virtual I/O File System).
 
 When the VM boots, it detects this share and mounts it (usually to `/run/rosetta`). This makes the macOS `rosetta` binary visible and executable inside the Linux VM.
 
-**3. The Registration Command**
+### 3) The Registration Command
+
 Regardless of whether we use QEMU or Rosetta, the *Linux Kernel* mechanism is identical. It uses **`binfmt_misc`** (Binary Formats Miscellaneous).
 
 When Docker Desktop starts (before our container is even created), its internal boot process sends a registration command to the kernel. Something equivalent of:
@@ -936,22 +934,6 @@ GNU_STACK ... Flags RW
 The absence of the `E` flag here is critical. It tells the Kernel: "The stack is for data, not code." This prevents code-injection attacks on the stack.
 
 
-
-Running `readelf -l ./dynamic_app` reveals that the Linker has actually created **4 distinct `PT_LOAD` segments**:
-
-1. **Read-Only Metadata (`R`):** ELF headers and dynamic symbol tables.
-2. **The Text Segment (`R E`):** Your actual code (`.text`) and the PLT stubs. This is the only memory executable by the CPU.
-3. **Read-Only Data (`R`):** Constants (`.rodata`) and unwind info. Separated from code to prevent ROP attacks.
-4. **Writable Data (`RW`):** Global variables (`.data`) and the Global Offset Table (GOT).
-
-**The RELRO Overlap**
-You will also notice a `GNU_RELRO` header. This is a special instruction to the Loader. It points to a subsection of the Writable Data segment (specifically the GOT).
-
-* **Startup:** The Loader leaves this area Writable to perform relocations.
-* **Lockdown:** Before passing control to `main()`, the Loader calls `mprotect` to flip this area to **Read-Only**.
-This ensures that once the function addresses are resolved, they become immutable, preventing GOT-overwrite attacks.
-
-Read the loader section on how the loader resolves and loads things and this will get a bit clearer.
 
 Once the app starts running we can check where it finally gets loaded (yes, we cheated and added a 60 second sleep in main.c to get the pid). We see that the final loaded address has a bias of ≈ 0x555555554000 for the PT_LOAD sections. That's the load_bias mentioned in Section 2.2 that the kernel adds for ASLR purposes.
 
