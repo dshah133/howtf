@@ -444,7 +444,7 @@ The "simple" act of running `./app` is a relay race passing the baton between th
 In a follow-up post, we will see how this machinery can fail at scale. We will trace a production incident where two collective communication libraries were linked into the same binary, causing a symbol collision that silently redirected RDMA verb calls to the wrong device. Understanding the PLT/GOT resolution pipeline was the key to diagnosing it.
 
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix A: The Cross-Architecture Magic (Rosetta & QEMU)
@@ -516,7 +516,7 @@ The POCF flags are documented in the [kernel binfmt_misc docs](https://docs.kern
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix B: The Keyboard Dance (TTY Architecture)
@@ -693,7 +693,7 @@ These give you an "emergency stop" even if the desktop is frozen. macOS, unfortu
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix C: Under the Hood (IDT, MSRs & Syscalls)
@@ -826,7 +826,7 @@ Linux's PTI documentation calls out an additional nuance: PTI uses a **trampolin
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix D: Segments Deep Dive
@@ -1001,7 +1001,7 @@ ffffc85bd000-ffffc85de000 rw-p 00000000 00:00 0                          [stack]
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix E: The Loader's Bootstrap (Self-Relocation)
@@ -1047,7 +1047,7 @@ Step 1 finds the bias (often via RIP-relative tricks). Step 2 applies `R_X86_64_
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix F: Loader's Relocation Mechanism
@@ -1363,7 +1363,7 @@ If an attacker finds a buffer overflow in your app later, they cannot overwrite 
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix G: The Assembly Handoff (_start)
@@ -1404,7 +1404,7 @@ See the [exact](https://elixir.bootlin.com/glibc/glibc-2.42.9000/source/sysdeps/
 
 </details>
 
-<details open class="appendix">
+<details class="appendix">
 <summary>
 
 ## Appendix H: Runtime Loading (dlopen/dlsym)
