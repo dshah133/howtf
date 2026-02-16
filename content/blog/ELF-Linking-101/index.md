@@ -444,7 +444,12 @@ The "simple" act of running `./app` is a relay race passing the baton between th
 In a follow-up post, we will see how this machinery can fail at scale. We will trace a production incident where two collective communication libraries were linked into the same binary, causing a symbol collision that silently redirected RDMA verb calls to the wrong device. Understanding the PLT/GOT resolution pipeline was the key to diagnosing it.
 
 
+<details open class="appendix">
+<summary>
+
 ## Appendix A: The Cross-Architecture Magic (Rosetta & QEMU)
+
+</summary>
 
 If you ran this lab on an Apple Silicon Mac (M1/M2/M3) or a Windows ARM machine, you likely noticed that the x86-64 binary simply executed. It didn't crash, and it didn't require a manual emulator command.
 
@@ -509,9 +514,14 @@ magic 7f454c4602010100000000000000000002003e00
 
 The POCF flags are documented in the [kernel binfmt_misc docs](https://docs.kernel.org/admin-guide/binfmt-misc.html): **P** (preserve argv[0]), **O** (open binary, pass an open fd to the interpreter), **C** (credentials, use the binary's credentials, not the interpreter's), and **F** (fix binary, keep the interpreter loaded so it works even inside mount namespaces/containers).
 
+</details>
 
+<details open class="appendix">
+<summary>
 
 ## Appendix B: The Keyboard Dance (TTY Architecture)
+
+</summary>
 
 One of the most confusing parts of Unix is typing into a terminal.
 
@@ -681,9 +691,14 @@ Linux keeps **virtual consoles** (`tty1`–`tty6`) that bypass the GUI stack ent
 
 These give you an "emergency stop" even if the desktop is frozen. macOS, unfortunately, does not provide an equivalent user-facing virtual console switch in the same way.
 
+</details>
 
+<details open class="appendix">
+<summary>
 
 ## Appendix C: Under the Hood (IDT, MSRs & Syscalls)
+
+</summary>
 
 In Part I, we glossed over the "Hardware Gate." Here is what happens on **modern x86-64** when we interact with the kernel, with the crucial clarification we discussed:
 
@@ -809,8 +824,14 @@ Linux's PTI documentation calls out an additional nuance: PTI uses a **trampolin
 [3]: https://linux-kernel-labs.github.io/refs/heads/master/lectures/syscalls.html?utm_source=chatgpt.com "System Calls — The Linux Kernel documentation"
 [4]: https://www.kernel.org/doc/html/next/x86/pti.html "21. Page Table Isolation (PTI) — The Linux Kernel  documentation"
 
+</details>
+
+<details open class="appendix">
+<summary>
 
 ## Appendix D: Segments Deep Dive
+
+</summary>
 
 Here is the detailed explanation of the `readelf -l` output, formatted to fit directly into the "Mapping the Memory" section.
 
@@ -978,7 +999,14 @@ ffffc85bd000-ffffc85de000 rw-p 00000000 00:00 0                          [stack]
 
 </details>
 
+</details>
+
+<details open class="appendix">
+<summary>
+
 ## Appendix E: The Loader's Bootstrap (Self-Relocation)
+
+</summary>
 
 In Section 3, we mentioned the loader must "fix itself." Here are the details.
 
@@ -1017,8 +1045,14 @@ _dl_start (void *arg)
 
 Step 1 finds the bias (often via RIP-relative tricks). Step 2 applies `R_X86_64_RELATIVE`-style relocations to itself. Once that's done, it becomes a "real program" and can load your app.
 
+</details>
+
+<details open class="appendix">
+<summary>
 
 ## Appendix F: Loader's Relocation Mechanism
+
+</summary>
 
 ### F.0 High-Level Sequence (What We're About to Zoom Into)
 
@@ -1327,10 +1361,14 @@ Note how `.got.plt` is not present here? In **this build/layout**, that's exactl
 
 If an attacker finds a buffer overflow in your app later, they cannot overwrite the GOT to hijack different lib calls via GOT indirections, because that memory is now not writeable.
 
+</details>
 
-
+<details open class="appendix">
+<summary>
 
 ## Appendix G: The Assembly Handoff (_start)
+
+</summary>
 
 In Section 4, we glossed over the assembly handoff. Here are the exact mechanics of how the loader passes control to the user.
 
@@ -1364,8 +1402,14 @@ _start:
 
 See the [exact](https://elixir.bootlin.com/glibc/glibc-2.42.9000/source/sysdeps/x86_64/start.S#L57) source code. Then `__libc_start_main` runs constructors for this binary (remember that the loader (`_dl_init`) already initialized shared libraries. `__libc_start_main` only runs constructors for the main executable) and [calls our `main`](https://elixir.bootlin.com/glibc/glibc-2.42.9000/source/sysdeps/nptl/libc_start_call_main.h#L58).
 
+</details>
+
+<details open class="appendix">
+<summary>
 
 ## Appendix H: Runtime Loading (dlopen/dlsym)
+
+</summary>
 
 Everything in the main article happens before `main()` starts. But many real programs need to load code later: a web server that loads authentication modules on demand, a game engine that loads renderer backends based on the GPU it detects, or a language runtime loading compiled extensions. The mechanism for this is `dlopen` and `dlsym`.
 
@@ -1399,3 +1443,5 @@ func();
 The loader walks the symbol hash table of that specific `link_map` and returns the memory address of `run_plugin`. From this point on, you call `func()` like any other function pointer.
 
 This is conceptually how Python loads C extensions: `import numpy` eventually triggers a `dlopen` on the compiled NumPy shared object, and `dlsym` is used to find the entry points that bridge Python calls to the C implementation.
+
+</details>
