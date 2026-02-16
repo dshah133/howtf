@@ -357,6 +357,67 @@ html {
   color: var(--dark);
 }
 
+// Collapsible sections
+article details {
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  overflow: hidden;
+
+  summary {
+    cursor: pointer;
+    padding: 0.75rem 1rem;
+    font-family: var(--codeFont);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--gray);
+    background: var(--lightgray);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::before {
+      content: "▸";
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-size: 0.75rem;
+    }
+
+    &:hover {
+      color: var(--secondary);
+    }
+  }
+
+  &[open] summary {
+    border-bottom: 1px solid var(--lightgray);
+
+    &::before {
+      transform: rotate(90deg);
+    }
+  }
+
+  // Remove margin/border from nested code blocks
+  > pre,
+  > div > pre,
+  > .highlight > pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  // Content padding for non-code children
+  > p, > ul, > ol, > blockquote {
+    padding: 0.75rem 1rem;
+    margin: 0;
+  }
+}
+
 // Callouts
 .callout {
   border-radius: 6px;
