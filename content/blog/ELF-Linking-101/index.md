@@ -1,3 +1,7 @@
+---
+title: "The Architecture of Execution: A Deep Dive into ELF, Linking, and Loading"
+---
+
 # The Architecture of Execution: A Deep Dive into ELF, Linking, and Loading
 
 **From the terminal to `main()` ... and back to the source.**
