@@ -1051,7 +1051,7 @@ Step 1 finds the bias (often via RIP-relative tricks). Step 2 applies `R_X86_64_
 
 </summary>
 
-### F.0 High-Level Sequence (What We're About to Zoom Into)
+### 1) High-Level Sequence (What We're About to Zoom Into)
 
 1. The loader starts running, but it itself is at a different location due to ASLR than what the linker had in mind.
 
@@ -1136,7 +1136,7 @@ Dynamic section at offset 0x2dd8 contains 28 entries:
 
 ---
 
-### F.1 Relocations for the Main Executable
+### 2) Relocations for the Main Executable
 
 First, let's see how the relocations information looks in our ELF binary.
 
@@ -1230,7 +1230,7 @@ Symbol table '.dynsym' contains 8 entries:
 
 ---
 
-### F.2 The Lazy-Binding PLT Path in Practice (`add@plt → .got.plt → resolver → patch`)
+### 3) The Lazy-Binding PLT Path in Practice (`add@plt → .got.plt → resolver → patch`)
 
 [Note: Don't try to compare gdb snippets below with above snippets, we cheated a bit because gdb for x64 binary on an M1 was giving us a hard time, so we just booted up a linux VM on another x64 machine. It shouldn't matter though for understanding the plt relocations.]
 
@@ -1369,7 +1369,7 @@ If an attacker finds a buffer overflow in your app later, they cannot overwrite 
 
 In Section 4, we glossed over the assembly handoff. Here are the exact mechanics of how the loader passes control to the user.
 
-### 1. The Exit Stub (`_dl_start_user`)
+### 1) The Exit Stub (`_dl_start_user`)
 
 The loader is written in C, but the final handoff requires assembly to manipulate registers precisely. This happens in architecture-specific glue (e.g., `sysdeps/x86_64/dl-machine.h` in glibc).
 
@@ -1382,7 +1382,7 @@ _dl_start_user:
     jmp *%r12              # Jump to user entry point (_start)
 ```
 
-### 2. The User Entry Point (`_start`)
+### 2) The User Entry Point (`_start`)
 
 The CPU lands at `_start`. This is provided by `crt1.o`. Its primary job is to align the stack (16‑byte alignment required by the x86‑64 ABI) and set up arguments for `__libc_start_main`.
 
@@ -1410,7 +1410,7 @@ See the [exact](https://elixir.bootlin.com/glibc/glibc-2.42.9000/source/sysdeps/
 
 Everything in the main article happens before `main()` starts. But many real programs need to load code later: a web server that loads authentication modules on demand, a game engine that loads renderer backends based on the GPU it detects, or a language runtime loading compiled extensions. The mechanism for this is `dlopen` and `dlsym`.
 
-### H.1 Loading a Library After Startup
+### 1) Loading a Library After Startup
 
 Suppose your program has an optional plugin system. At runtime, you decide to load a plugin:
 
@@ -1420,13 +1420,13 @@ void *handle = dlopen("./libplugin.so", RTLD_LAZY);
 
 Under the hood, this calls back into the same dynamic loader (`ld-linux.so`) that set up your process at startup. The loader finds `libplugin.so`, maps it into the process's address space with `mmap`, resolves its dependencies (if `libplugin.so` itself depends on other libraries), and performs relocations, the same machinery we saw in [Appendix F](#appendix-f-loaders-relocation-mechanism), just happening after `main()` instead of before it.
 
-### H.2 Initialization: Why `dlopen` Can Be Slow (or Crash)
+### 2) Initialization: Why `dlopen` Can Be Slow (or Crash)
 
 Before `dlopen` returns, the loader must run the constructors (`.init_array`) of `libplugin.so` and all of its dependencies. This is the same initialization step the loader performs for startup libraries, but it happens synchronously inside your `dlopen` call.
 
 This has a practical consequence: if `libplugin.so` contains a C++ global like `MyClass instance;`, that constructor runs inside `dlopen`. If it crashes, allocates a lot of memory, or takes a long time, your `dlopen` call inherits that behavior. The library must be fully initialized before you get the handle back.
 
-### H.3 Looking Up Symbols (`dlsym`)
+### 3) Looking Up Symbols (`dlsym`)
 
 Once `dlopen` returns successfully, you have an opaque handle. Internally, this is a pointer to the `link_map` structure the loader created when it mapped the library, the same structure it uses to track every shared library in the process.
 
