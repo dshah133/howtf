@@ -314,6 +314,22 @@ body[data-slug="index"] {
       line-height: 1.8;
       color: var(--darkgray);
     }
+
+    // Author bio line
+    > p:last-of-type {
+      font-size: 0.875rem;
+      color: var(--gray);
+      line-height: 1.7;
+
+      svg {
+        color: var(--gray);
+        transition: color 0.2s ease;
+
+        &:hover {
+          color: var(--secondary);
+        }
+      }
+    }
   }
 }
 
