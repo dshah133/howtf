@@ -390,7 +390,7 @@ Buck2's open-source configuration system exposes `dev` and `opt` as standard con
 
 ### 6.2 The Consequence: The 2 GiB Relocation Barrier
 
-Static linking sounds perfect until physics gets in the way. When you bundle an entire AI stack, or the transitive closure of a massive monorepo, into a single binary, it can grow to gigabytes. Binaries beyond 25 GiB (including debug symbols) have been observed at companies operating at this scale. At that point, a fundamental x86-64 limitation surfaces.
+Static linking sounds perfect until physics gets in the way. When you bundle an entire AI stack, or the transitive closure of a massive monorepo, into a single binary, it can grow to gigabytes. While working on Meta's build infrastructure, I regularly saw Buck2-built binaries exceed 25 GiB (including debug symbols) for large C++ services. At that point, a fundamental x86-64 limitation surfaces.
 
 Recall from Step 4 in Section 5.2: the `call` instruction uses a 32-bit signed PC-relative offset. That gives it a reach of roughly **±2 GiB**. If the linker cannot place a call target within that range, the link fails:
 
@@ -398,7 +398,7 @@ Recall from Step 4 in Section 5.2: the `call` instruction uses a 32-bit signed P
 relocation truncated to fit: R_X86_64_PC32
 ```
 
-This problem is well-documented in the LLVM and GCC communities, and has been encountered at Google with large x86-64 executables, particularly when built with instrumentations like `-fprofile-generate` or sanitizers that inflate code and data size. Engineers sometimes refer to this colloquially as the "4 GB trap," but the underlying limit is the **signed 32-bit reach of PC-relative relocations**.
+This was not a theoretical problem. Large services with deep dependency graphs would hit this barrier, especially when built with instrumentation like `-fprofile-generate` or sanitizers that inflate code and data sections. Engineers sometimes refer to it colloquially as the "4 GB trap," but the underlying limit is the **signed 32-bit reach of PC-relative relocations**.
 
 The brute-force fix is to compile with `-mcmodel=large`, which replaces the 5-byte relative `call` with a 12-byte `movabs` + `call` sequence that can reach any address. But this bloats every call site and increases register pressure, a steep price when you have millions of them.
 
