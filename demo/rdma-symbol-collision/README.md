@@ -1,44 +1,50 @@
-# Silent static-linking symbol collision (RDMA device misdirection)
+# Static/dynamic symbol-collision demos (RDMA device failures)
 
-Reproducible demo for a howtf.io post: how linking two static archives that both
-define the same strong C symbol can **silently** make one library run the
-other's implementation, with **no "multiple definition" error**. Dressed up as
-RDMA device enumeration, the failure is concrete: a checkpoint collective that
-should target the **storage NIC** silently initializes the **training NIC**.
+Reproducible demos for a howtf.io post on how duplicate symbols across a
+static/dynamic linking boundary quietly break device initialization — no linker
+error, no crash, just the wrong device or an empty device list. Dressed up as
+RDMA verbs so the failures are concrete.
 
-## The mechanism
+## The two mechanisms
 
-Static linking pulls archive members **on demand**. When the linker reaches an
-archive, it only copies in the members needed to satisfy still-undefined
-symbols. Once `vx_open_device` is defined by an earlier archive, that reference
-is closed — the linker will not look at any later archive for another copy. So a
-later library that shipped its own `vx_open_device` never gets its member
-pulled, and silently runs the earlier archive's version. The precondition that
-keeps it silent (instead of a loud `multiple definition` error) is **one
-colliding symbol per archive member**, so the conflicting member is never forced
-into the link for another reason.
+**1. Split state (mixed static + dynamic interposition) — the primary story.**
+Two copies of the same symbols are live at once: one statically linked into the
+executable, one inside a shared library. On ELF, the executable's copy
+**interposes** on the DSO's in the global lookup scope. So a load-time
+constructor can register devices into one copy's table while a dynamically-linked
+collective does discovery against the **other** copy's (empty) table →
+**"device not found"** with the devices demonstrably registered. Which copy each
+reference binds to is decided by knobs like `-rdynamic`, `-Bsymbolic`, and
+version scripts — so two binaries from identical sources, differing only in link
+composition, can behave differently.
 
-## Two parts
+**2. Static-archive order (the simpler teaching case).** Two `.a` archives
+define the same strong C symbol; the linker satisfies the reference from
+whichever archive it scans first and never pulls the other's member, so a later
+library **silently** runs the wrong copy — again with no `multiple definition`
+error. Here it surfaces as a collective opening the wrong NIC.
 
-- **[`local/`](local/)** — the must-have, hardware-free demo. Runs inside a
-  Linux/GNU-toolchain container anywhere. Reproduces the silent misdirection, the
-  loud-error contrast, the link-order dependence, and honestly tests every fix
-  (`--start-group`, `-fvisibility=hidden`, `objcopy --localize-symbol` /
-  `--redefine-sym`, plus the correctly-vendored co-located case). Full forensic
-  chain (`nm`, `ld -Map`/`--cref`, runtime) captured in `local/artifacts/`.
-- **[`ec2/`](ec2/)** — the real-RDMA flavor on an EC2 box: the colliding symbol
-  is the device-selection path in front of **real `ibv_open_device`** against two
-  soft-RoCE (`rxe`) devices, so "wrong device" is literal. Evidence in
-  `ec2/artifacts/`; instance details and teardown in `ec2/README.md`.
+## Layout
 
-## Honest verdict on fixes (see `local/README.md` for the full table)
+- **[`local/`](local/)** — hardware-free, container-based. Two subdirs:
+  - **[`local/split-state/`](local/split-state/)** (PRIMARY) — the interposition
+    "device not found" bug, both directions, per-binary nondeterminism, honest
+    fix ladder with `LD_DEBUG=bindings` proof.
+  - **[`local/archive-order/`](local/archive-order/)** (SECONDARY) — the
+    static-archive silent-misdirection bug and its fix taxonomy.
+- **[`ec2/`](ec2/)** — the real-RDMA flavor on an EC2 box: the archive-order
+  collision driving **real `ibv_open_device`** against two soft-RoCE (`rxe`)
+  devices, so "wrong device" is literal.
 
-For the silent **cross-library** trap: `--start-group`, `-fvisibility=hidden`,
-and `objcopy --localize-symbol` do **not** fix it (the colliding definition and
-its intended caller are in different objects, and the second member is never
-pulled). What does work: **namespacing** (`objcopy --redefine-sym` / rename), a
-**single canonical copy**, or **vendoring correctly** so each library privately
-owns its copy (compile hidden + localize, demonstrated on the co-located
-`vendored-*` targets). Every claim is backed by a captured artifact.
+## Honest headline on fixes
+
+The defect in both cases is **more than one copy of a symbol**. Fixes that only
+adjust one side's visibility (`-fvisibility=hidden`, a `local: *` version script,
+`objcopy --localize-symbol`, `--start-group`) frequently **do not** fix it and
+can move or trigger the bug — verified as honest negatives in the demos. What
+reliably works: a **single canonical copy**, **namespacing** so the copies are
+distinct symbols, or **not exporting the accidental duplicate**
+(`--exclude-libs`). And `-Bsymbolic`, usually described as a fix, is a **trigger**
+for the split-state bug. Every claim is backed by a captured artifact.
 
 Start at [`local/README.md`](local/README.md).
