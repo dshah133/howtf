@@ -1,0 +1,64 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import { SITE, seriesSlug, fmtDate } from "../../lib/site";
+
+const posts = await getCollection("blog", ({ data }) => !data.draft);
+const bySeries = new Map<
+  string,
+  { name: string; parts: typeof posts }
+>();
+for (const p of posts) {
+  if (!p.data.series) continue;
+  const slug = seriesSlug(p.data.series.name);
+  if (!bySeries.has(slug)) bySeries.set(slug, { name: p.data.series.name, parts: [] });
+  bySeries.get(slug)!.parts.push(p);
+}
+for (const s of bySeries.values()) {
+  s.parts.sort((a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0));
+}
+const series = [...bySeries.entries()];
+---
+
+<Base
+  title={`series · ${SITE.title}`}
+  description={`Multi-part deep-dive series on ${SITE.title}.`}
+  canonical="/series/"
+  current="series"
+>
+  <main class="shell">
+    <div class="home-center archive">
+      <h1>// series</h1>
+      {
+        series.map(([slug, s]) => (
+          <div class="frame">
+            <span class="frame-title">series</span>
+            <span class="frame-tag">{s.parts.length} part{s.parts.length === 1 ? "" : "s"}</span>
+            <h3 style="font-family: var(--font-display); font-weight: 400; font-size: 1.2rem;">
+              <a href={`/series/${slug}/`} style="text-decoration: none;">{s.name}</a>
+            </h3>
+            <ol class="series-parts">
+              {s.parts.map((p) => (
+                <li>
+                  <a href={`/blog/${p.id}/`}>Part {p.data.series!.part}: {p.data.title}</a>
+                  <span class="eyebrow"> — {fmtDate(p.data.date)}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))
+      }
+      {series.length === 0 && <p>No series yet.</p>}
+    </div>
+  </main>
+</Base>
+
+<style>
+  .series-parts {
+    list-style: none;
+    margin-top: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+</style>

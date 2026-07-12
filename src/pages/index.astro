@@ -9,7 +9,10 @@ import { SITE } from "../lib/site";
 const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
 );
-const latest = posts.slice(0, 5);
+// hand-picked featured posts lead; the rest follow reverse-chron
+const featured = posts.filter((p) => p.data.featured);
+const rest = posts.filter((p) => !p.data.featured);
+const latest = [...featured, ...rest].slice(0, Math.max(5, featured.length));
 
 const jsonLd = [
   {
@@ -77,8 +80,8 @@ const jsonLd = [
         latest.map((post, i) => (
           <PostCard
             post={post}
-            label={i === 0 ? "latest session" : "session"}
-            tag={i === 0 ? "start here" : undefined}
+            label={post.data.featured ? "featured session" : i === 0 ? "latest session" : "session"}
+            tag={post.data.featured || i === 0 ? "start here" : undefined}
           />
         ))
       }
