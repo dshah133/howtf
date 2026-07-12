@@ -335,6 +335,7 @@ strong {
   font-size: 1.3rem;
   line-height: 1.35;
   color: var(--text);
+  word-spacing: 0.45ch;
 }
 .post-card .dek {
   margin-top: 0.55rem;
@@ -440,6 +441,7 @@ strong {
   font-weight: 400;
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
+  word-spacing: 0.45ch;
 }
 .archive .year {
   font-family: var(--font-display);
@@ -523,6 +525,7 @@ strong {
   font-weight: 400;
   font-size: clamp(1.6rem, 4vw, 2.3rem);
   line-height: 1.2;
+  word-spacing: 0.45ch;
 }
 .post-header .dek {
   margin-top: 0.85rem;
@@ -555,6 +558,7 @@ strong {
   font-weight: 400;
   line-height: 1.3;
   scroll-margin-top: 5rem;
+  word-spacing: 0.4ch;
 }
 .article-body h2 {
   font-size: 1.35rem;
