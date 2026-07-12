@@ -9,8 +9,8 @@ type, CRT-amber phosphor. No cards, no shadows, no border-radius, no pills.
 
 | Role    | Face                      | Notes                                    |
 | ------- | ------------------------- | ---------------------------------------- |
-| Display | Departure Mono (400 only) | self-hosted, OFL — masthead, headings, chrome labels |
-| Body    | Alegreya Sans 400/500/700 + italic | long-form prose at 1.125rem/1.65, 66ch measure |
+| Display | Departure Mono (400 only) | self-hosted, OFL — masthead, headings (word-spacing 0.4–0.45ch at display sizes), chrome labels |
+| Body    | iA Writer Quattro 400/700 + italic | self-hosted, OFL — a proportional mono: typewriter texture, prose-speed reading; 1.0625rem/1.7, 66ch measure |
 | Code    | JetBrains Mono 400/700    | code blocks + inline code only           |
 
 ## Color
