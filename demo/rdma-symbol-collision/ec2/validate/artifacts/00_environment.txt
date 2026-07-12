@@ -1,0 +1,15 @@
+# rdma link
+link rxe_train/1 state ACTIVE physical_state LINK_UP netdev ens5 
+link rxe_store/1 state ACTIVE physical_state LINK_UP netdev rxedummy0 
+
+# ibv_devices
+    device          	   node GUID
+    ------          	----------------
+    rxe_train       	08ffdcfffefecb17
+    rxe_store       	58821efffe0b365c
+
+# gcc/ld
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+GNU ld (GNU Binutils for Ubuntu) 2.42
+# kernel
+6.17.0-1019-aws

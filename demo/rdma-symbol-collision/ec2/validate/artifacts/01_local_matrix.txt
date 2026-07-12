@@ -1,0 +1,58 @@
+# fresh-instance validation
+# host: Linux ip-172-31-18-45 6.17.0-1019-aws #19~24.04.1-Ubuntu SMP Tue Jun 23 18:53:06 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+# gcc: gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# ld:  GNU ld (GNU Binutils for Ubuntu) 2.42
+
+############ (A) DEFAULT: DSO exports verbs fns, no special flags ############
+# hypothesis: NO split -- the DSO constructor's register call is interposed onto the exe copy
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=STATIC table@0x5e68f2e64040] now holds 1 device(s)
+    [register -> copy=STATIC table@0x5e68f2e64040] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0x5e68f2e64040] this copy holds 2 device(s)
+  collective: discovered 2 device(s)
+# -> register and get_list print the SAME table@ address = same copy = no split
+
+############ (B) DSO -Bsymbolic-functions ############
+# hypothesis: SPLIT -- constructor self-binds to the DSO copy; discovery reads the exe copy
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0x75c5b52d8040] now holds 1 device(s)
+    [register -> copy=SHARED table@0x75c5b52d8040] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0x56dab2ff3040] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# -> register table@ != get_list table@ = different copies = SPLIT
+
+############ (C) DSO internals given VISIBILITY (hidden / protected) ############
+# C-protected: symbols still exported, DSO self-binds internally -> SPLIT
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0x7ba198a48040] now holds 1 device(s)
+    [register -> copy=SHARED table@0x7ba198a48040] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0x613e56ee4040] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# C-hidden: symbols NOT exported -> --as-needed DROPS the DSO, so the constructor never runs
+  >>> libverbs_shared.so DROPPED by --as-needed: constructor never runs (a DIFFERENT failure, not a split)
+    [get_list <- copy=STATIC table@0x57486a4a8040] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# C-hidden forced to load (--no-as-needed) -> the real SPLIT appears
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0x778619e45040] now holds 1 device(s)
+    [register -> copy=SHARED table@0x778619e45040] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0x5d86e706f040] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+
+############ (D) DATA-object collision: the device TABLE, not a function ############
+# D1: DSO table file-local static, exe table GLOBAL, collective reads the table as DATA -> SPLIT
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0x7a55ec3d2040] now holds 1 device(s)
+    [register -> copy=SHARED table@0x7a55ec3d2040] now holds 2 device(s)
+    [collective reads DATA vx_devices@0x5f3a4a59e040] count=0
+  collective(data): discovered 0 device(s)   *** DEVICE NOT FOUND -- constructor filled a DIFFERENT vx_devices ***
+# D2: table GLOBAL in BOTH exe and DSO -> COPY RELOCATION unifies them -> NO split
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0x58e273f2d040] now holds 1 device(s)
+    [register -> copy=SHARED table@0x58e273f2d040] now holds 2 device(s)
+    [collective reads DATA vx_devices@0x58e273f2d040] count=2
+  collective(data): discovered 2 device(s)
+# -> in D2 the constructor's register table@ EQUALS the collective's read table@ (exe BSS copy)
+
+VERDICT: real split in B, C-protected, C-hidden(forced-load), D1. NOT in A (interposition
+unifies), D2 (copy-relocation unifies), or C-hidden default (DSO dropped -> different failure).

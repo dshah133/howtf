@@ -1,0 +1,20 @@
+###### (A) default DSO + exe EXPORTS -> expect NO split ######
+    [register -> copy=STATIC table@0x60b6c7d8b040] rxe_train (this copy now holds 1)
+    [register -> copy=STATIC table@0x60b6c7d8b040] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x60b6c7d8b040] this copy holds 2 device(s)
+  collective: registry reports 2 rdma device(s)
+###### (B) DSO -Bsymbolic-functions + exe EXPORTS -> expect SPLIT ######
+    [register -> copy=SHARED table@0x79c0c0b3c060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x79c0c0b3c060] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x5fb0726bd040] this copy holds 0 device(s)
+  collective: registry reports 0 rdma device(s)   *** NO DEVICE FOUND -- but the constructor enumerated the real devices into the OTHER copy ***
+###### (C) DSO -Bsymbolic full + exe EXPORTS -> expect SPLIT ######
+    [register -> copy=SHARED table@0x798f98afd060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x798f98afd060] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x5c3f6009f040] this copy holds 0 device(s)
+  collective: registry reports 0 rdma device(s)   *** NO DEVICE FOUND -- but the constructor enumerated the real devices into the OTHER copy ***
+###### (D) DSO -Bsymbolic-functions + exe --exclude-libs,ALL -> expect NO split ######
+    [register -> copy=SHARED table@0x7d1985f4e060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x7d1985f4e060] rxe_store (this copy now holds 2)
+    [get_list <- copy=SHARED table@0x7d1985f4e060] this copy holds 2 device(s)
+  collective: registry reports 2 rdma device(s)
