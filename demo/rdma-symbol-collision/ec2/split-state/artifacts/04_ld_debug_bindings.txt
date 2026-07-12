@@ -1,1 +1,1 @@
-     10643:	binding file build/libcollective.so [0] to ./build/rapp_bug [0]: normal symbol `vx_get_device_list'
+     11342:	binding file build/libcollective.so [0] to ./build/rapp_bug [0]: normal symbol `vx_get_device_list'

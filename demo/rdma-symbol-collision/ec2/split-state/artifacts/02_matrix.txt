@@ -2,28 +2,28 @@ mkdir -p build
 ###### (A) default DSO + exe EXPORTS -> expect NO split ######
 gcc -O0 -g -fPIC -DVX_ORIGIN='"SHARED"' -DVX_WITH_CTOR -shared rverbs.c -o build/libverbs_shared.so -libverbs
 gcc -O0 -g rapp.c -o build/rapp_A -Lbuild -rdynamic -lcollective -lverbs_shared -Wl,--whole-archive -lverbs_static -Wl,--no-whole-archive -libverbs
-    [register -> copy=STATIC] rxe_train (this copy now holds 1)
-    [register -> copy=STATIC] rxe_store (this copy now holds 2)
-    [get_list <- copy=STATIC] this copy holds 2 device(s)
+    [register -> copy=STATIC table@0x5a18d43ab040] rxe_train (this copy now holds 1)
+    [register -> copy=STATIC table@0x5a18d43ab040] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x5a18d43ab040] this copy holds 2 device(s)
   collective: registry reports 2 rdma device(s)
 ###### (B) DSO -Bsymbolic-functions + exe EXPORTS -> expect SPLIT ######
 gcc -O0 -g -fPIC -DVX_ORIGIN='"SHARED"' -DVX_WITH_CTOR -Wl,-Bsymbolic-functions -shared rverbs.c -o build/libverbs_shared.so -libverbs
 gcc -O0 -g rapp.c -o build/rapp_B -Lbuild -rdynamic -lcollective -lverbs_shared -Wl,--whole-archive -lverbs_static -Wl,--no-whole-archive -libverbs
-    [register -> copy=SHARED] rxe_train (this copy now holds 1)
-    [register -> copy=SHARED] rxe_store (this copy now holds 2)
-    [get_list <- copy=STATIC] this copy holds 0 device(s)
+    [register -> copy=SHARED table@0x721ca8969060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x721ca8969060] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x5cde1e144040] this copy holds 0 device(s)
   collective: registry reports 0 rdma device(s)   *** NO DEVICE FOUND -- but the constructor enumerated the real devices into the OTHER copy ***
 ###### (C) DSO -Bsymbolic full + exe EXPORTS -> expect SPLIT ######
 gcc -O0 -g -fPIC -DVX_ORIGIN='"SHARED"' -DVX_WITH_CTOR -Wl,-Bsymbolic -shared rverbs.c -o build/libverbs_shared.so -libverbs
 gcc -O0 -g rapp.c -o build/rapp_C -Lbuild -rdynamic -lcollective -lverbs_shared -Wl,--whole-archive -lverbs_static -Wl,--no-whole-archive -libverbs
-    [register -> copy=SHARED] rxe_train (this copy now holds 1)
-    [register -> copy=SHARED] rxe_store (this copy now holds 2)
-    [get_list <- copy=STATIC] this copy holds 0 device(s)
+    [register -> copy=SHARED table@0x700f1c810060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x700f1c810060] rxe_store (this copy now holds 2)
+    [get_list <- copy=STATIC table@0x6315e956a040] this copy holds 0 device(s)
   collective: registry reports 0 rdma device(s)   *** NO DEVICE FOUND -- but the constructor enumerated the real devices into the OTHER copy ***
 ###### (D) DSO -Bsymbolic-functions + exe --exclude-libs,ALL -> expect NO split ######
 gcc -O0 -g -fPIC -DVX_ORIGIN='"SHARED"' -DVX_WITH_CTOR -Wl,-Bsymbolic-functions -shared rverbs.c -o build/libverbs_shared.so -libverbs
 gcc -O0 -g rapp.c -o build/rapp_D -Lbuild -rdynamic -lcollective -lverbs_shared -Wl,--whole-archive -lverbs_static -Wl,--no-whole-archive -Wl,--exclude-libs,ALL -libverbs
-    [register -> copy=SHARED] rxe_train (this copy now holds 1)
-    [register -> copy=SHARED] rxe_store (this copy now holds 2)
-    [get_list <- copy=SHARED] this copy holds 2 device(s)
+    [register -> copy=SHARED table@0x7dc0f49cf060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x7dc0f49cf060] rxe_store (this copy now holds 2)
+    [get_list <- copy=SHARED table@0x7dc0f49cf060] this copy holds 2 device(s)
   collective: registry reports 2 rdma device(s)

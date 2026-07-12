@@ -8,11 +8,11 @@ static const char *table[16];
 static int count = 0;
 void vx_register_device(const char *name){
   if(count < 16) table[count++] = name;
-  fprintf(stderr, "    [register -> copy=%s] %s (this copy now holds %d)\n", VX_ORIGIN, name, count);
+  fprintf(stderr, "    [register -> copy=%s table@%p] %s (this copy now holds %d)\n", VX_ORIGIN, (void*)table, name, count);
 }
 int vx_get_device_list(const char **out, int max){
   int n = count < max ? count : max;
-  fprintf(stderr, "    [get_list <- copy=%s] this copy holds %d device(s)\n", VX_ORIGIN, count);
+  fprintf(stderr, "    [get_list <- copy=%s table@%p] this copy holds %d device(s)\n", VX_ORIGIN, (void*)table, count);
   for(int i=0;i<n;i++) out[i]=table[i];
   return n;
 }

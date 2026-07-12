@@ -1,7 +1,7 @@
     [constructor in copy=SHARED] enumerating 2 REAL rdma device(s)
-    [register -> copy=SHARED] rxe_train (this copy now holds 1)
-    [register -> copy=SHARED] rxe_store (this copy now holds 2)
-    [get_list <- copy=SHARED] this copy holds 2 device(s)
+    [register -> copy=SHARED table@0x7b68edd0d060] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED table@0x7b68edd0d060] rxe_store (this copy now holds 2)
+    [get_list <- copy=SHARED table@0x7b68edd0d060] this copy holds 2 device(s)
 == real rdma devices present on this host (ibv_get_device_list): 2 ==
   [0] rxe_train
   [1] rxe_store
