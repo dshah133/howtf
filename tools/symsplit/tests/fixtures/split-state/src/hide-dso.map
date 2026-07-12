@@ -1,0 +1,10 @@
+/* Version script that hides everything except the collective entry point.
+ * Used by the `nofix-version-script` target to show that hiding the DSO's
+ * symbols does NOT fix the split state -- the collective still binds to the
+ * executable's exported (empty) static copy. */
+{
+  global:
+    collective_run;
+  local:
+    *;
+};
