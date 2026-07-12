@@ -1,0 +1,11 @@
+{
+  "experiment": "faiss OpenMP binding target vs torch scope promotion",
+  "faiss_alone__swigfaiss_binds_libgomp": {
+    "faiss/../faiss_cpu.libs/libgomp-a34b3233.so.1.0.0": 5
+  },
+  "torch_first__swigfaiss_binds_libgomp": {
+    "torch/lib/libgomp-a34b3233.so.1": 5
+  },
+  "route_A_hit": true,
+  "mechanism": "torch/__init__.py ctypes.CDLL(libtorch_global_deps.so, RTLD_GLOBAL); that lib DT_NEEDEDs libgomp -> torch libgomp enters global scope and interposes faiss's OpenMP references."
+}
