@@ -684,6 +684,21 @@ strong {
   margin: 1.75rem 0;
 }
 
+/* Terminal frames are theme-invariant dark — pin their syntax TOKENS to the
+   dark palette (--0) too, or light mode paints light-theme ink on the dark
+   session background. Must out-specify EC's own light-mode token rule. */
+:root[data-theme="light"]
+  .expressive-code
+  .frame.is-terminal
+  .ec-line
+  :where(span[style^="--"]:not([class])) {
+  color: var(--0, inherit);
+  background-color: var(--0bg, transparent);
+  font-style: var(--0fs, inherit);
+  font-weight: var(--0fw, inherit);
+  text-decoration: var(--0td, inherit);
+}
+
 /* series navigation */
 .series-nav {
   margin-top: 3rem;
