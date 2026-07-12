@@ -5,7 +5,7 @@ import Base from "../../layouts/Base.astro";
 import BacktraceToc from "../../components/BacktraceToc.astro";
 import AuthorCard from "../../components/AuthorCard.astro";
 import Subscribe from "../../components/Subscribe.astro";
-import { SITE, fmtDate, readingTime } from "../../lib/site";
+import { SITE, fmtDate, readingTime, seriesSlug } from "../../lib/site";
 
 export async function getStaticPaths() {
   const posts = await getCollection("blog", ({ data }) => !data.draft);
@@ -96,7 +96,11 @@ const jsonLd = [
           (prev || next) && (
             <div class="frame series-nav">
               <span class="frame-title">series — {series!.name}</span>
+              <span class="frame-tag">
+                part {series!.part} of {seriesPosts.length}
+              </span>
               <div class="series-nav-links">
+                <a href={`/series/${seriesSlug(series!.name)}/`}>all parts</a>
                 {prev && (
                   <a href={`/blog/${prev.id}/`}>
                     ← Part {prev.data.series!.part}: {prev.data.title}
@@ -107,7 +111,7 @@ const jsonLd = [
                     Part {next.data.series!.part}: {next.data.title} →
                   </a>
                 )}
-              </div>
+                </div>
             </div>
           )
         }

@@ -23,6 +23,14 @@ export function readingTime(body: string): string {
   return `${minutes} min read`;
 }
 
+export function seriesSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export function fmtDate(d: Date): string {
   return d.toLocaleDateString("en-US", {
     year: "numeric",
