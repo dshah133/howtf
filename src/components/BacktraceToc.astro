@@ -1,0 +1,73 @@
+---
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+
+// gdb-backtrace TOC: h2s are numbered frames (#0, #1, …), h3s indent under them
+const { headings } = Astro.props;
+const items: {
+  slug: string;
+  text: string;
+  frame: string | null;
+  sub: boolean;
+}[] = [];
+let frame = 0;
+for (const h of headings) {
+  if (h.depth === 2) {
+    items.push({ slug: h.slug, text: h.text, frame: `#${frame++}`, sub: false });
+  } else if (h.depth === 3) {
+    items.push({ slug: h.slug, text: h.text, frame: null, sub: true });
+  }
+}
+---
+
+{
+  items.length > 0 && (
+    <nav class="rail" aria-label="table of contents" data-toc>
+      <p class="rail-title">backtrace</p>
+      <ol>
+        {items.map((i) => (
+          <li class={i.sub ? "sub" : undefined}>
+            <a href={`#${i.slug}`}>
+              {i.frame && <span class="fno">{i.frame}</span>}
+              <span>{i.text}</span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
+<script>
+  // scroll-spy: highlight the frame whose heading was most recently passed
+  const toc = document.querySelector("[data-toc]");
+  if (toc) {
+    const links = new Map<string, HTMLAnchorElement>();
+    toc.querySelectorAll<HTMLAnchorElement>("a[href^='#']").forEach((a) => {
+      links.set(decodeURIComponent(a.hash.slice(1)), a);
+    });
+    const headings = [...links.keys()]
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    let active: HTMLAnchorElement | null = null;
+    const setActive = (a: HTMLAnchorElement | null) => {
+      if (active === a) return;
+      active?.classList.remove("active");
+      a?.classList.add("active");
+      active = a;
+    };
+    const onScroll = () => {
+      let current: HTMLElement | null = null;
+      for (const h of headings) {
+        if (h.getBoundingClientRect().top <= 96) current = h;
+        else break;
+      }
+      setActive(current ? (links.get(current.id) ?? null) : null);
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  }
+</script>

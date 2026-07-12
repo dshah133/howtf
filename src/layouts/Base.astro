@@ -1,0 +1,141 @@
+---
+import "../styles/global.css";
+import { SITE } from "../lib/site";
+
+interface Props {
+  title: string;
+  description: string;
+  /** absolute or site-relative canonical path; defaults to current URL */
+  canonical?: string;
+  ogType?: "website" | "article";
+  ogImage?: string;
+  /** extra JSON-LD objects to embed */
+  jsonLd?: object[];
+  /** show the sticky site header (off on the homepage, which has its own masthead) */
+  header?: boolean;
+  current?: string;
+}
+
+const {
+  title,
+  description,
+  ogType = "website",
+  ogImage = "/og/default.png",
+  jsonLd = [],
+  header = true,
+  current,
+} = Astro.props;
+
+const canonical = new URL(
+  Astro.props.canonical ?? Astro.url.pathname,
+  Astro.site,
+).href;
+const ogImageUrl = new URL(ogImage, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content={SITE.author} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title={SITE.title} href="/rss.xml" />
+    <meta name="generator" content={Astro.generator} />
+
+    <meta property="og:type" content={ogType} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content={SITE.title} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="preload"
+      href="/fonts/DepartureMono-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <script is:inline>
+      // set theme before first paint; dark is canonical
+      (function () {
+        var t = localStorage.getItem("howtf-theme");
+        if (!t)
+          t = matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
+
+    {jsonLd.map((obj) => (
+      <script type="application/ld+json" set:html={JSON.stringify(obj)} />
+    ))}
+
+    <script defer data-domain="howtf.io" src="https://plausible.io/js/script.outbound-links.js"
+    ></script>
+  </head>
+  <body>
+    {
+      header && (
+        <header class="site-header">
+          <a class="wordmark" href="/">
+            <span class="tilde">~/</span><span class="name">howtf.io</span>
+          </a>
+          <nav>
+            <a href="/blog/" aria-current={current === "blog" ? "page" : undefined}>posts</a>
+            <a href="/about/" aria-current={current === "about" ? "page" : undefined}>about</a>
+            <a href="/rss.xml">rss</a>
+          </nav>
+          <button class="theme-toggle" aria-label="toggle color scheme">
+            theme: <span data-theme-name>dark</span>
+          </button>
+        </header>
+      )
+    }
+    <slot />
+    <footer class="site-footer">
+      <span class="seg">© 2026 {SITE.author}</span>
+      <a href="/rss.xml">rss</a>
+      <a href={SITE.github}>github</a>
+      <a href={SITE.linkedin}>linkedin</a>
+      <a href="/colophon/">colophon</a>
+      <span class="right seg">nyc · utc-5</span>
+    </footer>
+
+    <script>
+      const btns = document.querySelectorAll<HTMLButtonElement>(".theme-toggle");
+      const names = document.querySelectorAll<HTMLElement>("[data-theme-name]");
+      const sync = () => {
+        const t = document.documentElement.dataset.theme ?? "dark";
+        names.forEach((n) => (n.textContent = t));
+      };
+      btns.forEach((b) =>
+        b.addEventListener("click", () => {
+          const next =
+            document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = next;
+          localStorage.setItem("howtf-theme", next);
+          sync();
+        }),
+      );
+      sync();
+    </script>
+  </body>
+</html>
