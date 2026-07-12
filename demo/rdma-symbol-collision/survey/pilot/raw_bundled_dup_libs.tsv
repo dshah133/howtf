@@ -1,0 +1,6 @@
+lib_family	n_wheels	wheels
+libgomp	3	faiss_cpu,scikit_learn,torch
+libquadmath	2	faiss_cpu,scipy
+libgfortran	2	faiss_cpu,scipy
+libgfortran-040039e	2	numpy,scipy
+libquadmath-96973f	2	numpy,scipy
