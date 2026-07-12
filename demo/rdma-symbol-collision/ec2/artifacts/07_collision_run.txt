@@ -1,0 +1,7 @@
+== real rdma devices visible (2) ==
+  [0] rxe_train
+  [1] rxe_store
+== training job: initializing collectives against REAL rdma ==
+  collective_a (training/allreduce)  selected=rxe_train opened=rxe_train guid=0caff1fffeda5a37  [expected rxe_train]  OK
+  collective_b (checkpoint/storage)  selected=rxe_train opened=rxe_train guid=0caff1fffeda5a37  [expected rxe_store]  *** WRONG DEVICE ***
+== done ==

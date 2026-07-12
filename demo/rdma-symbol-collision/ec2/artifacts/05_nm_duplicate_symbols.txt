@@ -1,0 +1,4 @@
+## libverbs_vendor.a
+0000000000000000 T vx_select_device
+## libverbs_bundled.a
+0000000000000000 T vx_select_device

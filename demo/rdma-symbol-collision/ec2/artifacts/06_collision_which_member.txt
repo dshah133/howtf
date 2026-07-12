@@ -1,0 +1,12 @@
+Archive member included to satisfy reference by file (symbol)
+
+build/libcollective_a.a(rcollective_a.o)
+                              build/rapp.o (collective_a_run)
+build/libverbs_vendor.a(rverbs_vendor.o)
+                              build/libcollective_a.a(rcollective_a.o) (vx_select_device)
+build/libcollective_b.a(rcollective_b.o)
+                              build/rapp.o (collective_b_run)
+
+# member-pull proof (count of each verbs member in the link map):
+#   rverbs_vendor.o  (vendor copy)  : 17  -> PULLED, satisfied vx_select_device for everyone
+#   rverbs_bundled.o (bundled copy) : 0  -> NEVER PULLED (0) -> silent misdirection, no error
