@@ -48,6 +48,34 @@ analysis lands in this dir. Default wheel set (override with `WHEELS=`):
 - `raw_symbolic_sos.tsv` — the `.so`s built `-Bsymbolic`.
 - `raw_bundled_dup_libs.tsv` — library families bundled by >=2 wheels.
 
+## Interpretation of the pilot run (analyst notes)
+
+Verdict: **STRONG** signal for the *precondition*, with one honest caveat on the
+*trigger*.
+
+- **Precondition is pervasive.** Across 8 wheels (290 `.so`s), thousands of
+  strong-global C symbols are defined in 2+ co-importable wheels. Filtering out
+  the ~22 symbol-version node names (`GOMP_1.0`, `GFORTRAN_8` — metadata, not
+  functions), the substance is real duplicated runtime functions:
+  ~1279 `_gfortran_*`, ~284 OpenMP/OpenACC (`GOACC_parallel`, `omp_*`), and BLAS
+  (`cblas_*`).
+- **Ground truth: duplicated runtime libraries.** `libgomp` ships in 3 wheels
+  (faiss-cpu, scikit-learn, torch); `libgfortran` and `libquadmath` in multiple
+  (numpy, scipy, faiss). `cblas_*` appears in both faiss's bundled OpenBLAS and
+  torch's `libtorch_cpu`. `import torch, faiss, sklearn` loads three OpenMP
+  runtimes into one process — the classic hazard shape.
+- **Trigger caveat (honest).** **Zero** `.so`s in this sample are `-Bsymbolic`
+  (`DF_SYMBOLIC`). So the *silent split-state* variant specifically (constructor
+  writes one copy, discovery reads another) needs its trigger from elsewhere —
+  protected visibility (not measured per-symbol here) or the static-archive-order
+  mechanism. The broader duplicate-strong-symbol interposition hazard (one copy
+  silently wins for everyone) is present regardless of `-Bsymbolic`.
+
+Net: an ecosystem-survey framing is **load-bearing** for "duplicate strong C
+symbols across co-imported ML wheels are pervasive, including dangerous runtime
+families." The full survey should additionally scan for protected-visibility
+symbols and widen the wheel set to hunt for `-Bsymbolic` defining `.so`s.
+
 ## Honesty notes / limits of the pilot
 
 - Duplicate strong symbols are a **precondition**, not a bug. A real silent split
