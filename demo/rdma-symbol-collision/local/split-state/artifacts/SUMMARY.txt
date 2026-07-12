@@ -1,9 +1,17 @@
 SPLIT-STATE (mixed static/dynamic interposition) -- EVIDENCE SUMMARY
 generated on aarch64 / aarch64-linux-gnu
 
-bug-a (registration->shared copy, lookup->static empty): 1 not-found ->   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
-bug-b (registration->static copy, lookup->shared empty): 1 not-found ->   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+GATING EXPERIMENT (01_matrix.txt) -- split occurs in exactly these cells:
+  ===== (A) default DSO (no self-bind) + exe EXPORTS static copy =====
+    collective: discovered 2 device(s)
+  ===== (B) DSO -Bsymbolic-functions + exe EXPORTS static copy =====
+    collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+  ===== (C) DSO -Bsymbolic (full) + exe EXPORTS static copy =====
+    collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+  ===== (D) DSO -Bsymbolic-functions + exe does NOT export (--exclude-libs,ALL) =====
+    collective: discovered 2 device(s)
 
-See 03_ld_debug_bindings.txt for the dynamic-linker proof, 01_nm_* for the
-duplicate symbols, 05_nondeterminism.txt for the identical-source contrast,
-and 06_fix_ladder.txt for what fixes it and what does not.
+bug-b inverse (04):   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+
+See 02_nm_* (duplicate symbols), 03_ld_debug_bindings (dynamic-linker
+proof), 05_nondeterminism, and 06_fix_ladder for the rest.

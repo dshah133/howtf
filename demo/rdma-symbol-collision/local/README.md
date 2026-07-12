@@ -11,6 +11,9 @@ Mixed **static + dynamic** symbol interposition. Two copies of the same symbols
 are live at once (one statically in the executable, one in a `.so`); a
 constructor registers devices into one copy while discovery reads the other's
 empty table → **"device not found"** with the devices demonstrably registered.
+Led by a **four-configuration gating experiment** (`make matrix`) that pins
+exactly when the split is real — it is **not** automatic; a default build does
+not split, and you need a self-binding DSO plus an interposing executable.
 Includes both directions, per-binary nondeterminism from identical sources, and
 an honest fix ladder (with `LD_DEBUG=bindings` proof). This is the shape of the
 real incident.

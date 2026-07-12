@@ -13,10 +13,15 @@ executable, one inside a shared library. On ELF, the executable's copy
 **interposes** on the DSO's in the global lookup scope. So a load-time
 constructor can register devices into one copy's table while a dynamically-linked
 collective does discovery against the **other** copy's (empty) table →
-**"device not found"** with the devices demonstrably registered. Which copy each
-reference binds to is decided by knobs like `-rdynamic`, `-Bsymbolic`, and
-version scripts — so two binaries from identical sources, differing only in link
-composition, can behave differently.
+**"device not found"** with the devices demonstrably registered.
+
+Crucially, this is **not** automatic: in a default build the DSO's own
+constructor is interposed onto the executable's copy too, so registration and
+discovery agree and there is no split. The split needs **both** a self-binding
+DSO (`-Bsymbolic-functions`/`-Bsymbolic`) **and** an executable that exports its
+copy — pinned by a four-configuration gating experiment (`make matrix`). Two
+binaries from identical sources, differing only in link composition, can behave
+differently.
 
 **2. Static-archive order (the simpler teaching case).** Two `.a` archives
 define the same strong C symbol; the linker satisfies the reference from
