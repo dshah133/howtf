@@ -76,7 +76,6 @@ const jsonLd = [
           <p class="meta">
             <b>{SITE.author}</b>
             <span>published {fmtDate(date)}</span>
-            {updated && <span>updated {fmtDate(updated)}</span>}
             <span>{readingTime(post.body ?? "")}</span>
             {
               series && (
