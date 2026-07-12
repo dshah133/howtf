@@ -1,0 +1,98 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import PostCard from "../components/PostCard.astro";
+import Whoami from "../components/Whoami.astro";
+import Subscribe from "../components/Subscribe.astro";
+import { SITE } from "../lib/site";
+
+const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
+const latest = posts.slice(0, 5);
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE.title,
+    url: SITE.url,
+    description: SITE.description,
+    author: {
+      "@type": "Person",
+      name: SITE.author,
+      url: SITE.url,
+      sameAs: [SITE.linkedin, SITE.github],
+    },
+  },
+];
+---
+
+<Base
+  title="howtf.io — deep dives from the bottom of the systems stack"
+  description={SITE.description}
+  canonical="/"
+  jsonLd={jsonLd}
+  header={false}
+>
+  <main class="shell">
+    <div class="home-center">
+      <header>
+        <p class="eyebrow">
+          // deep dives from the bottom of the stack
+          <button
+            class="theme-toggle"
+            aria-label="toggle color scheme"
+            style="float: right"
+          >
+            theme: <span data-theme-name>dark</span>
+          </button>
+        </p>
+        <h1 class="prompt">
+          <span class="tilde">~/</span><span class="name">howtf.io</span><span
+            class="cursor"
+            aria-hidden="true">▍</span
+          >
+        </h1>
+      </header>
+
+      <div class="manifesto">
+        <p class="lede">
+          Every debugging story I have starts the same way: staring at a bug,
+          asking — <em>howtf did that happen?</em>
+        </p>
+        <p>
+          This site is a collection of those moments. Kernel, loader, GPU,
+          virtual machine monitor — I demystify the bugs that live at the
+          deepest levels of the systems stack.
+        </p>
+        <p>
+          There is an immense, almost ridiculous pleasure in stripping away the
+          magic and feeling that computers can <em>actually</em> be understood.
+          Or at least I tell myself that, until the next crash.
+        </p>
+      </div>
+
+      {
+        latest.map((post, i) => (
+          <PostCard
+            post={post}
+            label={i === 0 ? "latest session" : "session"}
+            tag={i === 0 ? "start here" : undefined}
+          />
+        ))
+      }
+
+      {
+        posts.length > latest.length && (
+          <p class="eyebrow">
+            <a href="/blog/">all {posts.length} posts →</a>
+          </p>
+        )
+      }
+
+      <Whoami />
+      <Subscribe />
+    </div>
+  </main>
+</Base>

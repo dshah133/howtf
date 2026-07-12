@@ -1,0 +1,53 @@
+---
+import Base from "../layouts/Base.astro";
+import Subscribe from "../components/Subscribe.astro";
+import { SITE } from "../lib/site";
+---
+
+<Base
+  title={`about · ${SITE.title}`}
+  description="Deep Shah — systems engineer. Meta Llama pre-training infrastructure, VMware virtual machine monitor, Linux kernel PTP."
+  canonical="/about/"
+  current="about"
+>
+  <main class="shell">
+    <div class="home-center">
+      <div class="frame bio">
+        <span class="frame-title">whoami --long</span>
+        <div>
+          <p>
+            I'm Deep Shah. I build systems for agentic workflows at a stealth
+            startup in NYC. This site is where I write down the debugging
+            stories — every one starts with a production bug and ends with one
+            less magic layer in the stack.
+          </p>
+          <p style="margin-top:1rem">The artifacts, not the résumé:</p>
+          <ul>
+            <li>
+              <strong>Meta</strong> — large-scale pre-training infrastructure
+              for Llama, collective communications libraries, and GB200
+              training-stack bring-up
+            </li>
+            <li>
+              <strong>VMware</strong> — Virtual Machine Monitor team, core
+              virtualization
+            </li>
+            <li>
+              <strong>Linux kernel</strong> — PTP / IEEE 1588 time
+              synchronization
+            </li>
+            <li>
+              <strong>Confidential computing</strong> — SGX
+            </li>
+          </ul>
+          <p class="links">
+            <a href={SITE.linkedin}>LinkedIn</a> ·
+            <a href={SITE.github}>GitHub</a> ·
+            <a href="/rss.xml">RSS</a>
+          </p>
+        </div>
+      </div>
+      <Subscribe />
+    </div>
+  </main>
+</Base>

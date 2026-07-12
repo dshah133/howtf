@@ -1,0 +1,26 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { fmtDate, readingTime } from "../lib/site";
+
+interface Props {
+  post: CollectionEntry<"blog">;
+  /** pane title, e.g. "latest session" */
+  label?: string;
+  tag?: string;
+}
+
+const { post, label = "session", tag } = Astro.props;
+const { title, description, date, series } = post.data;
+---
+
+<a class="frame post-card" href={`/blog/${post.id}/`}>
+  <span class="frame-title">{label}</span>
+  {tag && <span class="frame-tag">{tag}</span>}
+  <h3>{title}</h3>
+  <p class="dek">{description}</p>
+  <p class="meta">
+    {series && <span class="series">{series.name} · Part {series.part}</span>}
+    <span>{fmtDate(date)}</span>
+    <span>{readingTime(post.body ?? "")}</span>
+  </p>
+</a>

@@ -1,0 +1,48 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import PostCard from "../../components/PostCard.astro";
+import { SITE } from "../../lib/site";
+
+const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
+
+// group by year; scales from 1 to hundreds of posts without redesign
+const byYear = new Map<number, typeof posts>();
+for (const p of posts) {
+  const y = p.data.date.getUTCFullYear();
+  if (!byYear.has(y)) byYear.set(y, []);
+  byYear.get(y)!.push(p);
+}
+const years = [...byYear.keys()].sort((a, b) => b - a);
+---
+
+<Base
+  title={`posts · ${SITE.title}`}
+  description={`All posts on ${SITE.title} — ${SITE.description}`}
+  canonical="/blog/"
+  current="blog"
+>
+  <main class="shell">
+    <div class="home-center archive">
+      <div>
+        <h1>// all sessions</h1>
+        {
+          years.map((y) => (
+            <section>
+              <p class="year">{y}</p>
+              <ul>
+                {byYear.get(y)!.map((post) => (
+                  <li>
+                    <PostCard post={post} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        }
+      </div>
+    </div>
+  </main>
+</Base>

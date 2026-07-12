@@ -1,0 +1,25 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE } from "../lib/site";
+---
+
+<Base
+  title={`404 · ${SITE.title}`}
+  description="Page not found."
+>
+  <main class="shell">
+    <div class="home-center">
+      <div class="frame term">
+        <span class="frame-title">session</span>
+        <span class="frame-tag">exit 1</span>
+        <pre
+          style="padding: 1rem 1.25rem; font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.65; color: var(--term-text); background: var(--term-bg);">
+$ cat {"{page}"}
+cat: no such file or directory
+
+howtf did <em>that</em> happen? Probably a moved post or a typo'd link.
+Try <a href="/">the homepage</a> or <a href="/blog/">all posts</a>.</pre>
+      </div>
+    </div>
+  </main>
+</Base>
