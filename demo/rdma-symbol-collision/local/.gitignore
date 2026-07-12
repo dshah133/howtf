@@ -1,0 +1,2 @@
+# Disposable build tree (regenerate with ./run.sh or ./evidence-in-docker.sh).
+build/
