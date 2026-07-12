@@ -1,8 +1,19 @@
 # EC2 / real-RDMA flavor of the symbol collision
 
-Same silent static-linking collision as `../local/`, but the colliding symbol
-(`vx_select_device`) sits in front of **real `ibv_open_device`** against two
-**soft-RoCE (rxe)** devices. The payoff is literal: a checkpoint collective that
+Two real-hardware variants run on this box:
+
+- **this directory (`src/`)** — the static-archive collision driving real
+  `ibv_open_device`: a collective opens the **wrong** rxe device.
+- **[`split-state/`](split-state/)** — the mixed static/dynamic interposition
+  bug: a constructor enumerates the real rxe devices into one copy while
+  discovery reads the other, so the app reports **no rdma device** while
+  `ibv_devices` shows two. (Mirror of `../local/split-state/`.)
+
+The rest of this file documents the static-archive variant.
+
+Same silent static-linking collision as `../local/archive-order/`, but the
+colliding symbol (`vx_select_device`) sits in front of **real
+`ibv_open_device`** against two **soft-RoCE (rxe)** devices. The payoff is literal: a checkpoint collective that
 should open the **storage** NIC silently opens the **training** NIC via a real
 rdma-core call.
 

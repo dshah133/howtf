@@ -1,0 +1,4 @@
+    device          	   node GUID
+    ------          	----------------
+    rxe_train       	0caff1fffeda5a37
+    rxe_store       	00e4e1fffe8815f9
