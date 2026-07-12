@@ -1,0 +1,63 @@
+# symsplit intentional-interposer allowlist
+#
+# Symbols on this list are duplicated ACROSS the static/dynamic boundary BY
+# DESIGN -- interposition is the whole point (a custom allocator, a sanitizer
+# runtime, an LD_PRELOAD shim). A duplicate here is expected, so symsplit
+# downgrades an otherwise-SPLIT verdict to ALLOWLISTED instead of flagging it.
+#
+# Format: one pattern per line. Trailing '*' is a prefix wildcard. Lines
+# starting with '#' are comments. Edit freely -- this file is the policy.
+#
+# Each entry carries a rationale so the list stays auditable.
+
+# ---- the C allocator: the canonical intentional interposer ----------------
+malloc                 # replacing the allocator process-wide is the intent
+free
+calloc
+realloc
+aligned_alloc
+posix_memalign
+memalign
+valloc
+pvalloc
+reallocarray
+malloc_usable_size
+
+# ---- C++ operator new/delete family: same story ---------------------------
+_Znwm                  # operator new(unsigned long)
+_Znam                  # operator new[](unsigned long)
+_ZdlPv                 # operator delete(void*)
+_ZdaPv                 # operator delete[](void*)
+_ZdlPvm                # operator delete(void*, unsigned long)
+_ZdaPvm                # operator delete[](void*, unsigned long)
+_ZnwmSt11align_val_t   # aligned new
+_ZnamSt11align_val_t
+
+# ---- Itanium C++ ABI runtime: shared, expected to be interposed -----------
+__cxa_*                # __cxa_throw / __cxa_atexit / __cxa_guard_* etc.
+
+# ---- jemalloc / tcmalloc export sets --------------------------------------
+je_*                   # jemalloc's je_-prefixed exports
+tc_*                   # tcmalloc's tc_-prefixed exports
+mallctl                # jemalloc control
+nallocx
+mallocx
+rallocx
+sdallocx
+dallocx
+
+# ---- sanitizer runtimes: interpose by construction ------------------------
+__asan_*
+__tsan_*
+__ubsan_*
+__msan_*
+__lsan_*
+__sanitizer_*
+
+# ---- common pthread shims (wrapped by profilers / TSan) --------------------
+pthread_create
+pthread_join
+pthread_mutex_lock
+pthread_mutex_unlock
+pthread_cond_wait
+pthread_cond_signal
