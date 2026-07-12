@@ -1,0 +1,62 @@
+{
+  "unit": "wheel_lightgbm",
+  "wheels": [
+    "lightgbm-4.5.0-py3-none-manylinux_2_28_x86_64.whl"
+  ],
+  "n_sos": 1,
+  "so_names": [
+    "lib_lightgbm.so"
+  ],
+  "analysis": {
+    "unit": "wheel_lightgbm",
+    "exe": "python3",
+    "n_modules": 11,
+    "module_names": [
+      "python3.11",
+      "libpython3.11.so.1.0",
+      "libc.so.6",
+      "libm.so.6",
+      "ld-linux-x86-64.so.2",
+      "lib_lightgbm.so",
+      "libdl.so.2",
+      "libstdc++.so.6",
+      "libgomp.so.1",
+      "libgcc_s.so.1",
+      "libpthread.so.0"
+    ],
+    "tier0_count": 13,
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier0_symbols": [
+      "_ZNSt15__exception_ptr13exception_ptr10_M_releaseEv",
+      "_ZNSt15__exception_ptr13exception_ptr9_M_addrefEv",
+      "_ZSt28__throw_bad_array_new_lengthv",
+      "__finite",
+      "__finitef",
+      "__finitel",
+      "__signbit",
+      "__signbitf",
+      "__signbitl",
+      "_dl_catch_error",
+      "_dl_catch_exception",
+      "_dl_signal_error",
+      "_dl_signal_exception"
+    ],
+    "tier1_symbols": [],
+    "tier2_splits": [],
+    "verdict_counts": {
+      "WEAK-PATTERN": 37,
+      "NO-SPLIT": 13,
+      "HIDDEN-BENIGN": 6
+    },
+    "families_tier0": {
+      "libstdc++": [
+        "_ZNSt15__exception_ptr13exception_ptr10_M_releaseEv",
+        "_ZNSt15__exception_ptr13exception_ptr9_M_addrefEv",
+        "_ZSt28__throw_bad_array_new_lengthv"
+      ]
+    },
+    "families_tier2": {},
+    "missing_needed": []
+  }
+}

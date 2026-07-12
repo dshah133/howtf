@@ -1,0 +1,49 @@
+{
+  "unit": "wheel_protobuf",
+  "wheels": [
+    "protobuf-5.28.2-cp38-abi3-manylinux2014_x86_64.whl"
+  ],
+  "n_sos": 1,
+  "so_names": [
+    "_message.abi3.so"
+  ],
+  "analysis": {
+    "unit": "wheel_protobuf",
+    "exe": "python3",
+    "n_modules": 8,
+    "module_names": [
+      "python3.11",
+      "libpython3.11.so.1.0",
+      "libc.so.6",
+      "libm.so.6",
+      "ld-linux-x86-64.so.2",
+      "_message.abi3.so",
+      "libstdc++.so.6",
+      "libgcc_s.so.1"
+    ],
+    "tier0_count": 10,
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier0_symbols": [
+      "__finite",
+      "__finitef",
+      "__finitel",
+      "__signbit",
+      "__signbitf",
+      "__signbitl",
+      "_dl_catch_error",
+      "_dl_catch_exception",
+      "_dl_signal_error",
+      "_dl_signal_exception"
+    ],
+    "tier1_symbols": [],
+    "tier2_splits": [],
+    "verdict_counts": {
+      "NO-SPLIT": 10,
+      "WEAK-PATTERN": 18
+    },
+    "families_tier0": {},
+    "families_tier2": {},
+    "missing_needed": []
+  }
+}
