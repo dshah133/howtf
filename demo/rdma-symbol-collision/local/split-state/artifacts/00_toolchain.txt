@@ -1,0 +1,4 @@
+Linux f4909c339cd8 6.12.69-linuxkit #1 SMP Mon Feb 16 11:19:06 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+GNU ld (GNU Binutils for Ubuntu) 2.42
+GNU objcopy (GNU Binutils for Ubuntu) 2.42

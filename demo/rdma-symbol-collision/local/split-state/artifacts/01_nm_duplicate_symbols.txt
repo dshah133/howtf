@@ -1,0 +1,7 @@
+# executable app_bug_a (T = defined global, exported via -rdynamic):
+0000000000000b4c T vx_get_device_list
+0000000000000abc T vx_register_device
+
+# libverbs_shared.so (its own copy of the same symbols):
+00000000000006f8 T vx_get_device_list
+0000000000000668 T vx_register_device

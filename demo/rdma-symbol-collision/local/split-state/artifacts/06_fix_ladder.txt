@@ -1,0 +1,12 @@
+FIXES THAT WORK:
+  fix-drop-duplicate :   collective: discovered 2 device(s)
+  fix-exclude-libs   :   collective: discovered 2 device(s)
+  fix-prefix-rename  :   collective: discovered 2 device(s)
+
+NAIVE FIXES THAT DO NOT WORK (they hide the wrong copy):
+  nofix-visibility     (-fvisibility=hidden on DSO):   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+  nofix-version-script (local:* on DSO):               collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+
+TRIGGER (not a fix): -Bsymbolic on the DSO turns a working binary broken:
+  DSO without -Bsymbolic:   collective: discovered 2 device(s)
+  DSO with    -Bsymbolic:   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
