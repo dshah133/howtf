@@ -1,14 +1,29 @@
-"""The binding simulator and the SPLIT verdict predicate.
+"""The binding simulator and the SPLIT / SCOPE-PARTITION verdict predicates.
 
 This is where symsplit earns the "not nm|uniq -d" claim. A duplicate symbol is
-necessary but nowhere near sufficient. We model ld.so's global-scope lookup,
-detect whether the defining DSO self-binds its own copy, and only call SPLIT
-when a duplicate would make two modules resolve the same name to DIFFERENT
-definitions.
+necessary but nowhere near sufficient. We model ld.so's scope-based symbol
+lookup and classify every duplicate strong symbol into exactly one of two real
+split-state routes, or one of several benign explanations:
+
+  Route A -- SPLIT (interposition capture): both copies live in a scope every
+  reader can see, but the DEFINING DSO self-binds its OWN calls to its own
+  copy (confirmed DF_SYMBOLIC, or the -Bsymbolic-functions signature), while
+  an external reader resolves the ordinary way and lands on a DIFFERENT copy.
+
+  Route B -- SCOPE-PARTITION (scope partition): no copy is reachable from a
+  shared/global scope at all -- the definers are split across >= 2 isolated
+  local (RTLD_LOCAL) namespaces. No self-binding is needed for this to
+  split: each namespace's own consumers simply resolve the name to whatever
+  copy lives in THEIR namespace. This is the common real-world shape (e.g.
+  the same vendored library -- libgomp, libstdc++, etc. -- bundled
+  separately inside several wheels, each dlopen'd RTLD_LOCAL).
+
+Both are genuine "two live copies of one strong symbol's state, resolved
+differently by different readers" bugs; see Verdict.SPLIT_VERDICTS.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from .closure import Closure
 from .model import (
@@ -20,6 +35,8 @@ from .model import (
     SymDef,
     Verdict,
 )
+
+_GLOBAL_GROUP = "__GLOBAL__"
 
 
 def _global_scope(closure: Closure) -> List[ModuleFacts]:
@@ -57,28 +74,71 @@ def _self_binds(m: ModuleFacts, name: str) -> bool:
     return True                           # probable self-bind (or unreferenced)
 
 
-def resolve(name: str, ref_module: ModuleFacts,
-            scope: List[ModuleFacts]) -> Optional[ModuleFacts]:
+def resolve(name: str, ref_module: ModuleFacts, scope: List[ModuleFacts],
+           groups: Optional[Dict[str, List[ModuleFacts]]] = None
+           ) -> Optional[ModuleFacts]:
     """Which module's definition of `name` does a reference in ref_module bind
-    to? Models self-binding first, then global-scope search order."""
+    to? Models self-binding first, then global-scope search order, then (for
+    an RTLD_LOCAL module) its own local-scope group -- itself plus any peers
+    declared to share its dlopen namespace (see closure.py / --module-group).
+    """
     if _self_binds(ref_module, name) and _defines(ref_module, name):
         return ref_module
     search = list(scope)
     if ref_module.is_dlopened and not ref_module.rtld_global:
-        # local group: global scope first, then the dlopened object itself
-        if ref_module not in search:
-            search = search + [ref_module]
+        key = ref_module.group or ("solo:" + ref_module.path)
+        peers = (groups or {}).get(key, [ref_module])
+        for p in peers:
+            if p not in search:
+                search.append(p)
     for m in search:
         if _defines(m, name):
             return m
     return None
 
 
+def _pairwise_disjoint(sets: Sequence[Set[str]]) -> bool:
+    """True iff no two sets in the sequence share any element."""
+    seen: Set[str] = set()
+    for s in sets:
+        if seen & s:
+            return False
+        seen |= s
+    return True
+
+
 class Analyzer:
-    def __init__(self, closure: Closure, allowlist):
+    def __init__(self, closure: Closure, allowlist, assume_rtld_local: bool = False):
         self.closure = closure
         self.allow = allowlist
+        self.assume_rtld_local = assume_rtld_local
         self.scope = _global_scope(closure)
+        # local-scope groups: effective-group-key -> member modules, for
+        # RTLD_LOCAL peer expansion in resolve().
+        self.groups: Dict[str, List[ModuleFacts]] = {}
+        for m in closure.modules:
+            if m.is_dlopened and not m.rtld_global:
+                key = m.group or ("solo:" + m.path)
+                self.groups.setdefault(key, []).append(m)
+
+    # -- scope modeling (Route B) --------------------------------------------
+
+    def _effective_group(self, m: ModuleFacts) -> str:
+        """The local-namespace group `m` is modeled as living in, for the
+        purpose of the scope-partition predicate. Modules in the shared
+        global scope (ordinary DT_NEEDED links, or --rtld-global modules) all
+        share _GLOBAL_GROUP. A dlopened (RTLD_LOCAL) module is in its own
+        group -- explicit via --module-group, otherwise a private singleton
+        that includes whatever it privately NEEDED. --assume-rtld-local
+        additionally isolates ordinarily-linked DSOs into their own private
+        group each, for callers who know (from outside the ELF) that a
+        plain-looking DT_NEEDED closure is actually assembled from separately
+        dlopen'd RTLD_LOCAL pieces."""
+        if m.is_dlopened and not m.rtld_global:
+            return m.group or ("solo:" + m.path)
+        if self.assume_rtld_local and not m.is_exe and not m.rtld_global:
+            return "solo:" + m.path
+        return _GLOBAL_GROUP
 
     # -- indexing ------------------------------------------------------------
 
@@ -156,7 +216,7 @@ class Analyzer:
             if len(dyn_mods) >= 1 and shadow:
                 findings.append(self._shadow_finding(name, dyn, shadow))
 
-        findings.sort(key=lambda f: (f.verdict != Verdict.SPLIT, f.symbol))
+        findings.sort(key=lambda f: (f.verdict not in Verdict.SPLIT_VERDICTS, f.symbol))
         return findings
 
     # -- verdicts ------------------------------------------------------------
@@ -169,6 +229,7 @@ class Analyzer:
                 module=m.name, symtabs=tabs, bind=sd.bind,
                 visibility=sd.visibility, type=sd.type, version=sd.version,
                 size=sd.size, self_bind=m.selfbind_status(),
+                scope_group=self._effective_group(m),
             ))
         return out
 
@@ -176,7 +237,7 @@ class Analyzer:
         pred = {}
         for m in self.closure.modules:
             if name in m.undefs:
-                w = resolve(name, m, self.scope)
+                w = resolve(name, m, self.scope, self.groups)
                 pred[m.name] = w.name if w else "UNRESOLVED"
         return pred
 
@@ -187,7 +248,8 @@ class Analyzer:
             reasons.add(r)
             tabs = ".symtab" if r == "symtab" else ".dynsym"
             copies.append(Copy(m.name, tabs, sd.bind, sd.visibility,
-                               sd.type, sd.version, sd.size, SelfBind.NA))
+                               sd.type, sd.version, sd.size, SelfBind.NA,
+                               scope_group=self._effective_group(m)))
         if "hidden" in reasons or "local" in reasons:
             verdict = Verdict.HIDDEN_BENIGN
             why = ("a second copy has non-default visibility / local binding "
@@ -209,7 +271,6 @@ class Analyzer:
         typ = dyn[0][1].type
         binds = {sd.bind for (_, sd) in dyn}
         viss = {sd.visibility for (_, sd) in dyn}
-        versions = {sd.version for (_, sd) in dyn if sd.version}
 
         def F(verdict, sev, why, label=SelfBind.NA):
             return Finding(name, None, typ, copies, label, pred, verdict, sev, why)
@@ -224,13 +285,62 @@ class Analyzer:
             return F(Verdict.HIDDEN_BENIGN, Severity.NONE,
                      "a copy has non-default visibility -> not exported for "
                      "interposition")
-        # 3. distinct symbol versions
-        if len(versions) >= 2:
+        # 3. symbol versioning -- disambiguates ONLY when every pair of
+        # colliding definitions carries a DISJOINT version-def set (genuinely
+        # different libraries / major versions). Two copies that happen to
+        # carry the SAME version node (e.g. two vendored copies of the same
+        # library, each defining foo@@V1 under an identical verdef) are NOT
+        # disambiguated by that shared version -- they stay in the hazard
+        # pool below for Route A / Route B classification. A copy with no
+        # version at all also blocks the clearing: an unversioned reference
+        # can still bind to it.
+        version_sets = []
+        for (_, sd) in dyn:
+            if sd.all_versions:
+                version_sets.append(set(sd.all_versions))
+            elif sd.version:
+                version_sets.append({sd.version})
+            else:
+                version_sets.append(set())
+        if all(version_sets) and _pairwise_disjoint(version_sets):
+            all_versions = sorted(set().union(*version_sets))
             return F(Verdict.VERSIONED_BENIGN, Severity.NONE,
-                     "copies carry different symbol versions (%s) -> versioned "
-                     "references disambiguate them" % ", ".join(sorted(versions)))
+                     "copies carry disjoint symbol version sets (%s) -> "
+                     "versioned references disambiguate them"
+                     % ", ".join(all_versions))
 
-        # 4. self-binding split predicate (library-level writer/reader)
+        # 4. ROUTE B -- scope partition. If NONE of the colliding copies is
+        # reachable from a shared/global scope, and the definers span >= 2
+        # isolated local (RTLD_LOCAL) namespaces, each namespace's own
+        # consumers resolve the name to THEIR OWN copy -- no self-binding is
+        # needed for this to split; the isolation itself is the mechanism.
+        eff_groups: Dict[str, List[Tuple[ModuleFacts, SymDef]]] = {}
+        for (m, sd) in dyn:
+            eff_groups.setdefault(self._effective_group(m), []).append((m, sd))
+        isolated_groups = {g: members for g, members in eff_groups.items()
+                           if g != _GLOBAL_GROUP}
+        if _GLOBAL_GROUP not in eff_groups and len(isolated_groups) >= 2:
+            if self.allow.match(name):
+                return F(Verdict.ALLOWLISTED, Severity.NONE,
+                         "matches the intentional-interposer allowlist (%s) "
+                         "-> duplicate is by design" % self.allow.match(name))
+            sev = self._severity(name, dyn, dyn[0][0], dup_names)
+            group_desc = "; ".join(
+                "%s (%s)" % (g, ", ".join(sorted(mm.name for mm, _ in members)))
+                for g, members in sorted(isolated_groups.items())
+            )
+            why = (
+                "no copy of %s is reachable from a shared/global scope; the "
+                "definers split across %d isolated local (RTLD_LOCAL) "
+                "namespaces -- %s -- so each namespace's own consumers "
+                "resolve %s to THEIR OWN copy -> two live copies diverge "
+                "(split state); no self-binding or interposition needed"
+                % (name, len(isolated_groups), group_desc, name)
+            )
+            return F(Verdict.SCOPE_PARTITION, sev, why, label=dyn[0][0].selfbind_status())
+
+        # 5. ROUTE A -- self-binding split predicate (library-level
+        # writer/reader), for copies that share a reachable scope.
         dso_copies = [(m, sd) for (m, sd) in dyn if not m.is_exe]
         split_reader = None
         winner_mod = None
@@ -243,7 +353,7 @@ class Analyzer:
             for R in self.closure.modules:
                 if R is D or name not in R.undefs:
                     continue
-                w = resolve(name, R, self.scope)
+                w = resolve(name, R, self.scope, self.groups)
                 if w is not None and w is not D:
                     split_reader, winner_mod, selfbound_D = R, w, D
                     break
@@ -272,7 +382,7 @@ class Analyzer:
             )
             return F(Verdict.SPLIT, sev, why, label=D.selfbind_status())
 
-        # 5. dup exists but unifies
+        # 6. dup exists but unifies
         # allowlisted dups that never split are still benign; label them.
         if self.allow.match(name):
             return F(Verdict.ALLOWLISTED, Severity.NONE,

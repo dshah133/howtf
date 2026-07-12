@@ -3,11 +3,14 @@
 # must each return a specific NON-split verdict. This is what proves symsplit
 # is a binding simulator, not a duplicate lister.
 #
-#   weak       -> WEAK-PATTERN        (global + weak override idiom)
-#   versioned  -> VERSIONED-BENIGN    (two defs under different version nodes)
-#   hidden     -> HIDDEN-BENIGN       (a copy has non-default visibility)
-#   allowlist  -> ALLOWLISTED         (malloc: interposition is the intent)
-#   symtab     -> NOT-DYNAMIC-BENIGN  (extra copy lives only in .symtab)
+#   weak          -> WEAK-PATTERN        (global + weak override idiom)
+#   versioned     -> VERSIONED-BENIGN    (two defs under different version nodes)
+#   hidden        -> HIDDEN-BENIGN       (a copy has non-default visibility)
+#   allowlist     -> ALLOWLISTED         (malloc: interposition is the intent)
+#   symtab        -> NOT-DYNAMIC-BENIGN  (extra copy lives only in .symtab)
+#   versioned_dup -> NOT VERSIONED-BENIGN (two defs under the SAME version
+#                    node -- e.g. two vendored copies of one library -- must
+#                    stay in the hazard pool; see test_versioned_same_node.)
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")/src" && pwd)"
 OUT="${1:-$(cd "$(dirname "$0")" && pwd)/build}"
@@ -60,5 +63,16 @@ d="$OUT/allowlist"; mkdir -p "$d"; ( cd "$d"
 d="$OUT/symtab"; mkdir -p "$d"; ( cd "$d"
   $CC $FP -shared "$SRC/secret_provider.c" -o libprovider.so
   $CC $F "$SRC/secret_exe.c" -o app_symtab )
+
+# 6) VERSIONED_DUP: two DSOs BOTH export api_call under the SAME version
+#    node (v1.map, node "V1") -- like two vendored copies of one library.
+#    Composed via --module in the test (each defaults to its own isolated
+#    local scope).
+d="$OUT/versioned_dup"; mkdir -p "$d"; ( cd "$d"
+  $CC $FP -shared "$SRC/verv.c" -Wl,--version-script="$SRC/v1.map" -o libv1a.so
+  $CC $FP -shared "$SRC/verv.c" -Wl,--version-script="$SRC/v1.map" -o libv1b.so
+  printf 'int main(void){return 0;}\n' > _m.c
+  $CC $F _m.c -o app_versioned_dup
+  rm -f _m.c )
 
 echo "built benign fixtures into $OUT"

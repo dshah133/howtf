@@ -10,6 +10,25 @@ Ordering (glibc, simplified but faithful for the split question):
   3. DT_RUNPATH of the loading object
   4. default system dirs (/lib, /usr/lib, multiarch)
 The executable is always first in the resulting global scope list.
+
+--- dlopen scope modeling (Route B) -----------------------------------------
+
+Real dlopen scope (RTLD_LOCAL vs RTLD_GLOBAL, and which modules share one
+dlmopen-style namespace) is a RUNTIME property, not present in the ELF. This
+is an honest limitation (see README): the closure resolver can only model
+what the CALLER tells it via --module / --module-group / --rtld-global.
+
+The default assumption, absent any of those: an executable's plain DT_NEEDED
+closure is ONE shared/global scope (matches ordinary dynamic linking). Each
+`--module` passed explicitly is modeled RTLD_LOCAL and, by default, gets its
+OWN local-scope "group" -- isolated from every other `--module` -- and that
+group extends to whatever DT_NEEDED dependencies THAT module pulls in (a
+`--module`'s own private dependency closure shares its dlopen scope, since
+that is how a real `dlopen()` call's dependency graph behaves). Two
+`--module`s that should be modeled as sharing ONE namespace (e.g. because the
+caller knows they were loaded via the same `dlopen()` call, or via `dlmopen`
+into the same link-map list) must be told so explicitly with
+`--module-group NAME:mod1,mod2,...`.
 """
 from __future__ import annotations
 
@@ -61,9 +80,16 @@ class Closure:
 def resolve_closure(exe_path: str,
                     ld_library_path: Optional[List[str]] = None,
                     extra_modules: Optional[List[str]] = None,
-                    rtld_global: bool = False) -> Closure:
+                    rtld_global: bool = False,
+                    module_groups: Optional[Dict[str, str]] = None) -> Closure:
+    """module_groups: optional {module-basename-or-soname: group-name} map
+    (from --module-group) assigning an explicit local-scope group to a
+    `--module` or one of its transitive DT_NEEDED dependencies. A module not
+    named in module_groups defaults to its loader's group (or, for a
+    top-level --module, a fresh singleton group of its own)."""
     ld_library_path = ld_library_path or []
     extra_modules = extra_modules or []
+    module_groups = module_groups or {}
 
     exe_path = os.path.realpath(exe_path)
     exe = parse_module(exe_path, is_exe=True)
@@ -105,10 +131,18 @@ def resolve_closure(exe_path: str,
         rp = os.path.realpath(mp)
         if rp in seen_paths:
             continue
+        basename = mp.rsplit("/", 1)[-1]
         mod = parse_module(rp, is_dlopened=True, rtld_global=rtld_global)
+        # explicit group (by the --module argument's basename, or the
+        # module's own advertised soname) wins; otherwise this top-level
+        # --module gets a fresh singleton group of its own.
+        mod.group = (module_groups.get(basename) or module_groups.get(mod.name)
+                    or ("solo:" + rp))
         modules.append(mod)
         seen_paths.add(rp)
-        # also pull the dlopened module's own NEEDED into the image
+        # Pull the dlopened module's own NEEDED into the image as part of
+        # the SAME dlopen scope: a --module's private dependency closure
+        # shares its namespace unless --module-group says otherwise.
         queue = [(mod, n) for n in mod.needed]
         while queue:
             loader, soname = queue.pop(0)
@@ -127,7 +161,9 @@ def resolve_closure(exe_path: str,
                 if not found:
                     missing.append(soname)
                 continue
-            dep = parse_module(found)
+            dep = parse_module(found, is_dlopened=True, rtld_global=rtld_global)
+            dep.group = (module_groups.get(soname) or module_groups.get(dep.name)
+                        or loader.group)
             modules.append(dep)
             seen_paths.add(found)
             if dep.soname:
