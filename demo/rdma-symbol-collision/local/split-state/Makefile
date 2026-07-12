@@ -23,6 +23,11 @@
 #   ./run.sh evidence
 #   ./run.sh all
 
+# TESTED WITH: gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1), GNU binutils 2.42,
+# on Ubuntu 24.04 (aarch64 container + x86_64 EC2). The mechanism is
+# architecture-independent. `make versions` prints the local toolchain; a wildly
+# different gcc/ld could change --as-needed / copy-relocation defaults, so check
+# it against the above if the matrix verdict differs.
 CC     := gcc
 B      := build
 CF     := -O0 -g
@@ -35,7 +40,7 @@ WHOLE   := -Wl,--whole-archive -lverbs_static -Wl,--no-whole-archive
 
 .PHONY: all matrix bug bug-b nondeterminism trigger-bsymbolic \
         fix-drop-duplicate fix-exclude-libs fix-prefix-rename \
-        nofix-visibility nofix-version-script evidence clean $(B)
+        nofix-visibility nofix-version-script versions evidence clean $(B)
 
 $(B):
 	mkdir -p $(B)
@@ -179,6 +184,10 @@ nofix-version-script: $(B)/libcollective.so $(B)/libverbs_static.a | $(B)
 	$(CC) $(CFPIC) $(DSHARED) -Wl,-Bsymbolic-functions -Wl,--version-script=$(SRC)/hide-dso.map -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
 	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_nofix_vs -L$(B) -rdynamic -lcollective -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed $(WHOLE)
 	@echo "### run (version-script local:* on the DSO, DSO forced to load -- still broken):"; $(RUN) ./$(B)/app_nofix_vs 2>&1 | grep -iE "register ->|get_list <-|discovered"
+
+versions:
+	@echo "TESTED WITH: gcc 13.3.0, GNU binutils 2.42, Ubuntu 24.04"
+	@echo "THIS HOST:"; $(CC) --version | head -1; ld --version | head -1
 
 evidence: | $(B)
 	bash evidence.sh
