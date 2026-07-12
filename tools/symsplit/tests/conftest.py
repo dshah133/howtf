@@ -15,6 +15,7 @@ import pytest
 HERE = os.path.dirname(__file__)
 SPLIT_STATE = os.path.join(HERE, "fixtures", "split-state")
 BENIGN = os.path.join(HERE, "fixtures", "benign")
+SCOPE_PARTITION = os.path.join(HERE, "fixtures", "scope-partition")
 
 
 def _toolchain_ok() -> bool:
@@ -52,7 +53,17 @@ def bn_dir(tmp_path_factory):
     return out
 
 
-def analyze(exe, ld_library_path=None, modules=None, rtld_global=False):
+@pytest.fixture(scope="session")
+def sp_dir(tmp_path_factory):
+    if not _toolchain_ok():
+        pytest.skip("no ELF toolchain")
+    out = str(tmp_path_factory.mktemp("sp"))
+    _build(SCOPE_PARTITION, out)
+    return out
+
+
+def analyze(exe, ld_library_path=None, modules=None, rtld_global=False,
+           module_groups=None, assume_rtld_local=False):
     """Run the full pipeline and return (findings, has_split)."""
     from symsplit.allowlist import Allowlist
     from symsplit.analyze import Analyzer
@@ -60,9 +71,11 @@ def analyze(exe, ld_library_path=None, modules=None, rtld_global=False):
     from symsplit.model import Verdict
 
     cl = resolve_closure(exe, ld_library_path=ld_library_path or [],
-                         extra_modules=modules or [], rtld_global=rtld_global)
-    findings = Analyzer(cl, Allowlist.load()).run()
-    has_split = any(f.verdict == Verdict.SPLIT for f in findings)
+                         extra_modules=modules or [], rtld_global=rtld_global,
+                         module_groups=module_groups or {})
+    findings = Analyzer(cl, Allowlist.load(),
+                        assume_rtld_local=assume_rtld_local).run()
+    has_split = any(f.verdict in Verdict.SPLIT_VERDICTS for f in findings)
     return findings, has_split
 
 

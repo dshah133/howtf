@@ -47,3 +47,23 @@ def test_symtab_only_not_dynamic(bn_dir):
                                   modules=[os.path.join(d, "libprovider.so")])
     assert not has_split
     assert verdict_of(findings, "dupfn") == Verdict.NOT_DYNAMIC_BENIGN
+
+
+@requires_elf
+def test_versioned_same_node_not_cleared(bn_dir):
+    """Regression for the versioning heuristic: two .so's each define
+    api_call@@V1 under the IDENTICAL version node -- like two vendored
+    copies of one library -- so the shared version does NOT disambiguate
+    them. Versioning only clears a duplicate when the colliding
+    definitions carry DISJOINT version-def sets; a same-node dup must stay
+    in the hazard pool. Composed via --module, so with no shared scope to
+    unify them, this lands in Route B (SCOPE-PARTITION)."""
+    d = os.path.join(bn_dir, "versioned_dup")
+    findings, has_split = analyze(
+        os.path.join(d, "app_versioned_dup"),
+        modules=[os.path.join(d, "libv1a.so"), os.path.join(d, "libv1b.so")],
+    )
+    v = verdict_of(findings, "api_call")
+    assert v != Verdict.VERSIONED_BENIGN
+    assert v == Verdict.SCOPE_PARTITION
+    assert has_split

@@ -7,7 +7,7 @@ aarch64, etc. all work.
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
@@ -169,6 +169,13 @@ def parse_module(path: str, is_exe: bool = False,
 
         # --- .dynsym: exported defs + undef references -----------------------
         dynsym_names_defined = set()
+        # A base symbol name can have MORE THAN ONE dynsym entry when a
+        # module carries multiple ABI versions of it (foo@OLDV plus
+        # foo@@NEWV). `m.defs[name]` keeps only the last-seen entry (for
+        # display), but the versioning heuristic needs the FULL set of
+        # version nodes a module defines for that name, so accumulate it
+        # separately here.
+        version_sets: Dict[str, Set[str]] = {}
         if isinstance(dynsym, SymbolTableSection):
             for i, sym in enumerate(dynsym.iter_symbols()):
                 name = sym.name
@@ -184,13 +191,25 @@ def parse_module(path: str, is_exe: bool = False,
                 if (sym.entry.st_shndx == "SHN_ABS"
                         and name in verindex.version_node_names):
                     continue
+                ver = verindex.defined_version(i)
                 sd = SymDef(
                     name=name, bind=b, visibility=_vis(sym), type=_type(sym),
-                    size=sym.entry.st_size, version=verindex.defined_version(i),
+                    size=sym.entry.st_size, version=ver,
                     in_dynsym=True, in_symtab=False,
                 )
                 m.defs[name] = sd
                 dynsym_names_defined.add(name)
+                if ver:
+                    version_sets.setdefault(name, set()).add(ver)
+
+        # attach the full version-def set to each surviving (last-wins) def
+        for name, versions in version_sets.items():
+            sd = m.defs.get(name)
+            if sd is not None:
+                sd.all_versions = frozenset(versions)
+
+        m.exported_symbols = frozenset(dynsym_names_defined)
+        m.version_defs = frozenset(verindex.version_node_names)
 
         # --- .symtab: pick up defs that are NOT in .dynsym --------------------
         # We DO record local/hidden symtab-only defs: they are "shadow" copies
