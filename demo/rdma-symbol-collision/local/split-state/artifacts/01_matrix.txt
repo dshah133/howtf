@@ -1,38 +1,53 @@
-# Split is real ONLY when the DSO self-binds AND the exe exports its copy.
-# Watch the 'register ->' line (which copy the constructor wrote) vs the
-# 'get_list <-' line (which copy discovery read).
-
-===== (A) default DSO (no self-bind) + exe EXPORTS static copy =====
-# expected: NO split -- constructor is interposed onto the exe copy too
+############ (A) DEFAULT: DSO exports verbs fns, no special flags ############
+# hypothesis: NO split -- the DSO constructor's register call is interposed onto the exe copy
     [constructor in copy=SHARED] registering rxe_train, rxe_store
-    [register -> copy=STATIC] this copy's table now holds 1 device(s)
-    [register -> copy=STATIC] this copy's table now holds 2 device(s)
-    [get_list <- copy=STATIC] this copy holds 2 device(s)
+    [register -> copy=STATIC table@0xaaaad42b0018] now holds 1 device(s)
+    [register -> copy=STATIC table@0xaaaad42b0018] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0xaaaad42b0018] this copy holds 2 device(s)
   collective: discovered 2 device(s)
+# -> register and get_list print the SAME table@ address = same copy = no split
 
-===== (B) DSO -Bsymbolic-functions + exe EXPORTS static copy =====
-# expected: SPLIT -- constructor self-binds to the DSO copy; discovery reads the exe copy
+############ (B) DSO -Bsymbolic-functions ############
+# hypothesis: SPLIT -- constructor self-binds to the DSO copy; discovery reads the exe copy
     [constructor in copy=SHARED] registering rxe_train, rxe_store
-    [register -> copy=SHARED] this copy's table now holds 1 device(s)
-    [register -> copy=SHARED] this copy's table now holds 2 device(s)
-    [get_list <- copy=STATIC] this copy holds 0 device(s)
+    [register -> copy=SHARED table@0xffff90340028] now holds 1 device(s)
+    [register -> copy=SHARED table@0xffff90340028] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0xaaaad8f00018] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# -> register table@ != get_list table@ = different copies = SPLIT
+
+############ (C) DSO internals given VISIBILITY (hidden / protected) ############
+# C-protected: symbols still exported, DSO self-binds internally -> SPLIT
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0xffff9b050028] now holds 1 device(s)
+    [register -> copy=SHARED table@0xffff9b050028] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0xaaaad5120018] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# C-hidden: symbols NOT exported -> --as-needed DROPS the DSO, so the constructor never runs
+  >>> libverbs_shared.so DROPPED by --as-needed: constructor never runs (a DIFFERENT failure, not a split)
+    [get_list <- copy=STATIC table@0xaaaac3680018] this copy holds 0 device(s)
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+# C-hidden forced to load (--no-as-needed) -> the real SPLIT appears
+    [constructor in copy=SHARED] registering rxe_train, rxe_store
+    [register -> copy=SHARED table@0xffff91250028] now holds 1 device(s)
+    [register -> copy=SHARED table@0xffff91250028] now holds 2 device(s)
+    [get_list <- copy=STATIC table@0xaaaac2240018] this copy holds 0 device(s)
   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
 
-===== (C) DSO -Bsymbolic (full) + exe EXPORTS static copy =====
-# expected: SPLIT too
+############ (D) DATA-object collision: the device TABLE, not a function ############
+# D1: DSO table file-local static, exe table GLOBAL, collective reads the table as DATA -> SPLIT
     [constructor in copy=SHARED] registering rxe_train, rxe_store
-    [register -> copy=SHARED] this copy's table now holds 1 device(s)
-    [register -> copy=SHARED] this copy's table now holds 2 device(s)
-    [get_list <- copy=STATIC] this copy holds 0 device(s)
-  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
-
-===== (D) DSO -Bsymbolic-functions + exe does NOT export (--exclude-libs,ALL) =====
-# expected: NO split -- discovery binds to the DSO copy, same one the constructor wrote
+    [register -> copy=SHARED table@0xffff95b00028] now holds 1 device(s)
+    [register -> copy=SHARED table@0xffff95b00028] now holds 2 device(s)
+    [collective reads DATA vx_devices@0xaaaad7cd0018] count=0
+  collective(data): discovered 0 device(s)   *** DEVICE NOT FOUND -- constructor filled a DIFFERENT vx_devices ***
+# D2: table GLOBAL in BOTH exe and DSO -> COPY RELOCATION unifies them -> NO split
     [constructor in copy=SHARED] registering rxe_train, rxe_store
-    [register -> copy=SHARED] this copy's table now holds 1 device(s)
-    [register -> copy=SHARED] this copy's table now holds 2 device(s)
-    [get_list <- copy=SHARED] this copy holds 2 device(s)
-  collective: discovered 2 device(s)
+    [register -> copy=SHARED table@0xaaaac9a90018] now holds 1 device(s)
+    [register -> copy=SHARED table@0xaaaac9a90018] now holds 2 device(s)
+    [collective reads DATA vx_devices@0xaaaac9a90018] count=2
+  collective(data): discovered 2 device(s)
+# -> in D2 the constructor's register table@ EQUALS the collective's read table@ (exe BSS copy)
 
-VERDICT: split only in (B) and (C). (A) removes self-binding, (D) removes
-the exe's interposition -- either one alone eliminates the split.
+VERDICT: real split in B, C-protected, C-hidden(forced-load), D1. NOT in A (interposition
+unifies), D2 (copy-relocation unifies), or C-hidden default (DSO dropped -> different failure).

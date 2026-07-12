@@ -43,6 +43,8 @@ $(B):
 # --- reusable inputs -------------------------------------------------------
 $(B)/libcollective.so: $(SRC)/collective.c | $(B)
 	$(CC) $(CFPIC) -shared $< -o $@
+$(B)/libcollective_data.so: $(SRC)/collective_data.c | $(B)
+	$(CC) $(CFPIC) -shared $< -o $@
 $(B)/libverbs_static.a: $(SRC)/verbs.c | $(B)
 	$(CC) $(CF) $(DSTATIC) -c $< -o $(B)/verbs_static.o
 	ar crs $@ $(B)/verbs_static.o
@@ -50,41 +52,60 @@ $(B)/libverbs_static_ctor.a: $(SRC)/verbs.c | $(B)
 	$(CC) $(CF) $(DSTATIC) -DVX_WITH_CTOR -c $< -o $(B)/verbs_static_ctor.o
 	ar crs $@ $(B)/verbs_static_ctor.o
 
+TR = grep -iE "constructor in|register ->|get_list <-|collective reads|discovered"
+
 # ===========================================================================
-# matrix: the four-configuration gating experiment. Two independent knobs:
-#   * does the DSO self-bind its internal calls?  (default vs -Bsymbolic*)
-#   * does the executable export/interpose its static copy? (-rdynamic vs
-#     --exclude-libs,ALL which hides the static archive's symbols)
-# The stderr trace prints WHICH copy each register/lookup used; the split is
-# real only when registration and discovery land in different copies.
+# matrix: the gating experiment. Two copies of the verbs symbols exist (one in
+# the exe from the static archive, one in the DSO). The split is real only when
+# the constructor's writes and discovery's reads land on DIFFERENT copies --
+# proven here by the TABLE ADDRESS printed on every register/lookup, not just a
+# label. Four configurations per the referee's spec:
+#   (A) default            (B) -Bsymbolic-functions
+#   (C) DSO hidden/protected visibility   (D) data-object (table) collision
 # ===========================================================================
-matrix: $(B)/libcollective.so $(B)/libverbs_static.a | $(B)
-	@echo "############ (A) default DSO (no self-bind) + exe EXPORTS its copy ############"
-	@echo "# hypothesis: NO split -- the DSO's constructor is interposed onto the exe copy too"
+matrix: $(B)/libcollective.so $(B)/libcollective_data.so $(B)/libverbs_static.a | $(B)
+	@echo "############ (A) DEFAULT: DSO exports verbs fns, no special flags ############"
+	@echo "# hypothesis: NO split -- the DSO constructor's register call is interposed onto the exe copy"
 	$(CC) $(CFPIC) $(DSHARED) -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
 	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_A -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
-	@$(RUN) ./$(B)/app_A 2>&1 | grep -iE "constructor in|register ->|get_list <-|discovered"
+	@$(RUN) ./$(B)/app_A 2>&1 | $(TR)
+	@echo "# -> register and get_list print the SAME table@ address = same copy = no split"
 	@echo
-	@echo "############ (B) DSO -Bsymbolic-functions + exe EXPORTS its copy ############"
-	@echo "# hypothesis: SPLIT -- constructor self-binds to the DSO copy, discovery reads the exe copy"
+	@echo "############ (B) DSO -Bsymbolic-functions ############"
+	@echo "# hypothesis: SPLIT -- constructor self-binds to the DSO copy; discovery reads the exe copy"
 	$(CC) $(CFPIC) $(DSHARED) -Wl,-Bsymbolic-functions -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
 	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_B -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
-	@$(RUN) ./$(B)/app_B 2>&1 | grep -iE "constructor in|register ->|get_list <-|discovered"
+	@$(RUN) ./$(B)/app_B 2>&1 | $(TR)
+	@echo "# -> register table@ != get_list table@ = different copies = SPLIT"
 	@echo
-	@echo "############ (C) DSO -Bsymbolic (full) + exe EXPORTS its copy ############"
-	@echo "# hypothesis: SPLIT too -- full -Bsymbolic self-binds functions as well"
-	$(CC) $(CFPIC) $(DSHARED) -Wl,-Bsymbolic -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
-	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_C -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
-	@$(RUN) ./$(B)/app_C 2>&1 | grep -iE "constructor in|register ->|get_list <-|discovered"
+	@echo "############ (C) DSO internals given VISIBILITY (hidden / protected) ############"
+	@echo "# C-protected: symbols still exported, DSO self-binds internally -> SPLIT"
+	$(CC) $(CFPIC) $(DSHARED) -DVX_VIS_PROTECTED -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_Cp -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
+	@$(RUN) ./$(B)/app_Cp 2>&1 | $(TR)
+	@echo "# C-hidden: symbols NOT exported -> --as-needed DROPS the DSO, so the constructor never runs"
+	$(CC) $(CFPIC) $(DSHARED) -DVX_VIS_HIDDEN -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_Ch -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
+	@if readelf -d $(B)/app_Ch | grep -q "NEEDED.*libverbs_shared"; then echo "  (DSO retained)"; else echo "  >>> libverbs_shared.so DROPPED by --as-needed: constructor never runs (a DIFFERENT failure, not a split)"; fi
+	@$(RUN) ./$(B)/app_Ch 2>&1 | $(TR)
+	@echo "# C-hidden forced to load (--no-as-needed) -> the real SPLIT appears"
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_Ch2 -L$(B) -rdynamic -lcollective -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed $(WHOLE)
+	@$(RUN) ./$(B)/app_Ch2 2>&1 | $(TR)
 	@echo
-	@echo "############ (D) DSO -Bsymbolic-functions + exe does NOT export (--exclude-libs,ALL) ############"
-	@echo "# hypothesis: NO split -- discovery now binds to the DSO copy, same one the constructor wrote"
+	@echo "############ (D) DATA-object collision: the device TABLE, not a function ############"
+	@echo "# D1: DSO table file-local static, exe table GLOBAL, collective reads the table as DATA -> SPLIT"
 	$(CC) $(CFPIC) $(DSHARED) -Wl,-Bsymbolic-functions -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
-	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_D -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE) -Wl,--exclude-libs,ALL
-	@$(RUN) ./$(B)/app_D 2>&1 | grep -iE "constructor in|register ->|get_list <-|discovered"
+	$(CC) $(CF) $(DSTATIC) -DVX_TABLE_GLOBAL -c $(SRC)/verbs.c -o $(B)/verbs_static_g.o; ar crs $(B)/libverbs_static_g.a $(B)/verbs_static_g.o
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_D1 -L$(B) -rdynamic -lcollective_data -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed -Wl,--whole-archive -lverbs_static_g -Wl,--no-whole-archive
+	@$(RUN) ./$(B)/app_D1 2>&1 | $(TR)
+	@echo "# D2: table GLOBAL in BOTH exe and DSO -> COPY RELOCATION unifies them -> NO split"
+	$(CC) $(CFPIC) $(DSHARED) -DVX_TABLE_GLOBAL -Wl,-Bsymbolic-functions -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_D2 -L$(B) -rdynamic -lcollective_data -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed -Wl,--whole-archive -lverbs_static_g -Wl,--no-whole-archive
+	@$(RUN) ./$(B)/app_D2 2>&1 | $(TR)
+	@echo "# -> in D2 the constructor's register table@ EQUALS the collective's read table@ (exe BSS copy)"
 	@echo
-	@echo "VERDICT: split is real ONLY when the DSO self-binds (B,C) AND the exe exports its copy."
-	@echo "         Remove either condition (A: no self-bind; D: no export) and there is no split."
+	@echo "VERDICT: real split in B, C-protected, C-hidden(forced-load), D1. NOT in A (interposition"
+	@echo "unifies), D2 (copy-relocation unifies), or C-hidden default (DSO dropped -> different failure)."
 
 # bug: the split itself (config B), the headline reproduction.
 bug: $(B)/libcollective.so $(B)/libverbs_static.a | $(B)
@@ -145,15 +166,19 @@ fix-prefix-rename: $(B)/libverbs_static.a | $(B)
 	@echo "### run:"; $(RUN) ./$(B)/app_fix_ns | grep discovered
 
 # --- naive fixes that DO NOT work (honest negatives) -----------------------
+# Both hide the DSO's symbols. Hidden symbols also make the DSO --as-needed
+# droppable, so we force it to load (--no-as-needed) to show the SPLIT genuinely
+# persists (constructor runs, fills the DSO copy; discovery still binds to the
+# exe copy) rather than the DSO simply being dropped.
 nofix-visibility: $(B)/libcollective.so $(B)/libverbs_static.a | $(B)
 	$(CC) $(CFPIC) -fvisibility=hidden $(DSHARED) -Wl,-Bsymbolic-functions -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
-	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_nofix_vis -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
-	@echo "### run (-fvisibility=hidden on the DSO -- still broken):"; $(RUN) ./$(B)/app_nofix_vis | grep discovered
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_nofix_vis -L$(B) -rdynamic -lcollective -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed $(WHOLE)
+	@echo "### run (-fvisibility=hidden on the DSO, DSO forced to load -- still broken):"; $(RUN) ./$(B)/app_nofix_vis 2>&1 | grep -iE "register ->|get_list <-|discovered"
 
 nofix-version-script: $(B)/libcollective.so $(B)/libverbs_static.a | $(B)
 	$(CC) $(CFPIC) $(DSHARED) -Wl,-Bsymbolic-functions -Wl,--version-script=$(SRC)/hide-dso.map -shared $(SRC)/verbs.c -o $(B)/libverbs_shared.so
-	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_nofix_vs -L$(B) -rdynamic -lcollective -lverbs_shared $(WHOLE)
-	@echo "### run (version-script local:* on the DSO -- still broken):"; $(RUN) ./$(B)/app_nofix_vs | grep discovered
+	$(CC) $(CF) $(SRC)/app.c -o $(B)/app_nofix_vs -L$(B) -rdynamic -lcollective -Wl,--no-as-needed -lverbs_shared -Wl,--as-needed $(WHOLE)
+	@echo "### run (version-script local:* on the DSO, DSO forced to load -- still broken):"; $(RUN) ./$(B)/app_nofix_vs 2>&1 | grep -iE "register ->|get_list <-|discovered"
 
 evidence: | $(B)
 	bash evidence.sh

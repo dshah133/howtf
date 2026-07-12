@@ -1,17 +1,21 @@
-SPLIT-STATE (mixed static/dynamic interposition) -- EVIDENCE SUMMARY
+SPLIT-STATE GATING EXPERIMENT -- EVIDENCE SUMMARY
 generated on aarch64 / aarch64-linux-gnu
 
-GATING EXPERIMENT (01_matrix.txt) -- split occurs in exactly these cells:
-  ===== (A) default DSO (no self-bind) + exe EXPORTS static copy =====
-    collective: discovered 2 device(s)
-  ===== (B) DSO -Bsymbolic-functions + exe EXPORTS static copy =====
-    collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
-  ===== (C) DSO -Bsymbolic (full) + exe EXPORTS static copy =====
-    collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
-  ===== (D) DSO -Bsymbolic-functions + exe does NOT export (--exclude-libs,ALL) =====
-    collective: discovered 2 device(s)
+Which configs produce the REAL split (constructor writes one table,
+discovery reads another -- proven by different table@ addresses):
+  (A) default                 : NO  (interposition unifies both onto the exe copy)
+  (B) -Bsymbolic-functions    : YES
+  (C) protected visibility    : YES
+  (C) hidden visibility       : DSO dropped by --as-needed (constructor never runs);
+                                forced to load -> YES (split)
+  (D1) data table, DSO static : YES  (constructor fills DSO table; collective reads exe global)
+  (D2) data table, global both: NO   (copy-relocation unifies onto the exe BSS copy)
 
-bug-b inverse (04):   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+Precondition (one sentence): the split needs TWO live copies of the symbol
+AND a DSO that self-binds its own internal use (via -Bsymbolic(-functions)
+or protected/hidden visibility) so its constructor writes the DSO copy while
+the rest of the program reads the executable's copy; plain data globals do
+NOT split because copy relocation gives everyone the executable's copy.
 
-See 02_nm_* (duplicate symbols), 03_ld_debug_bindings (dynamic-linker
-proof), 05_nondeterminism, and 06_fix_ladder for the rest.
+See 01_matrix.txt (address-proof gating), 02_ld_debug_bindings.txt,
+03_nm_*, 04_bug_b_run, 05_nondeterminism, 06_fix_ladder.
