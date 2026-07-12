@@ -79,13 +79,6 @@ In this post, we take a different approach. We trace the life of a command from 
   </div>
 </figure>
 
-<div class="frame diagram" data-loader-stepper>
-  <span class="frame-title">fig. 0b — the same relay, one step at a time</span>
-  <div class="diagram-body">
-    <noscript><p>This figure is interactive and needs JavaScript; fig. 0 above tells the same story statically.</p></noscript>
-  </div>
-</div>
-
 ---
 
 ## Follow Along
@@ -565,7 +558,14 @@ The CPU lands at a function called `_start`. This is not your code. It is a smal
 
 (Curious what this assembly looks like? See [Appendix G: The Assembly Handoff](#appendix-g-the-assembly-handoff-_start).)
 
+That completes the relay from fig. 0 — every leg of it has now crossed the page. Replay the whole thing, one step at a time; each caption should read as review, not news:
 
+<div class="frame diagram" data-loader-stepper>
+  <span class="frame-title">fig. 0b — the relay, replayed step by step</span>
+  <div class="diagram-body">
+    <noscript><p>This figure is interactive and needs JavaScript; fig. 0 back in the intro tells the same story statically.</p></noscript>
+  </div>
+</div>
 
 ## Part V: The Flashback (Build Time)
 
