@@ -1,5 +1,5 @@
 ---
-title: "What actually happens between exec() and main()"
+title: "howtf does ./app reach main()?"
 description: "Trace one command from keystroke to main() — kernel, loader, PLT/GOT — until two classic deploy errors stop being mysterious."
 date: 2026-02-16
 updated: 2026-07-12
