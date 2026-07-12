@@ -1,0 +1,89 @@
+{
+  "unit": "wheel_opencv_python_headless",
+  "wheels": [
+    "opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+  ],
+  "n_sos": 13,
+  "so_names": [
+    "cv2.abi3.so",
+    "libavcodec-9aae324f.so.59.37.100",
+    "libavformat-3ff1be5b.so.59.27.100",
+    "libavutil-a0a0531e.so.57.28.100",
+    "libcrypto-337dac8b.so.1.1",
+    "libgfortran-91cc3cb1.so.3.0.0",
+    "libopenblas-r0-f650aae0.3.3.so",
+    "libpng16-1bde1c40.so.16.43.0",
+    "libquadmath-96973f99.so.0.0.0",
+    "libssl-28bef1ac.so.1.1",
+    "libswresample-2ec4394e.so.4.7.100",
+    "libswscale-2c3c8be7.so.6.7.100",
+    "libvpx-c3a7933e.so.9.0.0"
+  ],
+  "analysis": {
+    "unit": "wheel_opencv_python_headless",
+    "exe": "python3",
+    "n_modules": 24,
+    "module_names": [
+      "python3.11",
+      "libpython3.11.so.1.0",
+      "libc.so.6",
+      "libm.so.6",
+      "ld-linux-x86-64.so.2",
+      "cv2.abi3.so",
+      "libpng16-1bde1c40.so.16.43.0",
+      "libavcodec-9aae324f.so.59.37.100",
+      "libavformat-3ff1be5b.so.59.27.100",
+      "libavutil-a0a0531e.so.57.28.100",
+      "libswscale-2c3c8be7.so.6.7.100",
+      "libz.so.1",
+      "libopenblas-r0-f650aae0.3.3.so",
+      "libpthread.so.0",
+      "librt.so.1",
+      "libdl.so.2",
+      "libstdc++.so.6",
+      "libgcc_s.so.1",
+      "libswresample-2ec4394e.so.4.7.100",
+      "libvpx-c3a7933e.so.9.0.0",
+      "libssl-28bef1ac.so.1.1",
+      "libcrypto-337dac8b.so.1.1",
+      "libgfortran-91cc3cb1.so.3.0.0",
+      "libquadmath-96973f99.so.0.0.0"
+    ],
+    "tier0_count": 15,
+    "tier1_count": 5,
+    "tier2_count": 0,
+    "tier0_symbols": [
+      "__bss_start",
+      "__finite",
+      "__finitef",
+      "__finitel",
+      "__signbit",
+      "__signbitf",
+      "__signbitl",
+      "_dl_catch_error",
+      "_dl_catch_exception",
+      "_dl_signal_error",
+      "_dl_signal_exception",
+      "_edata",
+      "_end",
+      "_fini",
+      "_init"
+    ],
+    "tier1_symbols": [
+      "__bss_start",
+      "_edata",
+      "_end",
+      "_fini",
+      "_init"
+    ],
+    "tier2_splits": [],
+    "verdict_counts": {
+      "NO-SPLIT": 15,
+      "WEAK-PATTERN": 18,
+      "HIDDEN-BENIGN": 2
+    },
+    "families_tier0": {},
+    "families_tier2": {},
+    "missing_needed": []
+  }
+}

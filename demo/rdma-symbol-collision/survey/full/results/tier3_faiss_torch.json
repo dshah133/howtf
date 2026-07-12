@@ -1,0 +1,67 @@
+{
+  "imports": [
+    "torch",
+    "faiss"
+  ],
+  "import_rc": 0,
+  "symbols_probed": [
+    "omp_get_num_threads",
+    "GOMP_parallel",
+    "omp_get_max_threads",
+    "omp_in_parallel",
+    "cblas_sgemm"
+  ],
+  "n_binding_lines": 4,
+  "per_symbol": {
+    "omp_get_max_threads": {
+      "distinct_defs": [
+        "libgomp-a34b3233.so.1"
+      ],
+      "split_confirmed": false,
+      "bindings": {
+        "libgomp-a34b3233.so.1": [
+          "_swigfaiss_avx2.cpython-311-x86_64-linux-gnu.so",
+          "libtorch_cpu.so"
+        ]
+      }
+    },
+    "omp_in_parallel": {
+      "distinct_defs": [
+        "libgomp-a34b3233.so.1"
+      ],
+      "split_confirmed": false,
+      "bindings": {
+        "libgomp-a34b3233.so.1": [
+          "_swigfaiss_avx2.cpython-311-x86_64-linux-gnu.so",
+          "libopenblas64_p-r0-0cf96a72.3.23.dev.so",
+          "libtorch_cpu.so"
+        ]
+      }
+    },
+    "omp_get_num_threads": {
+      "distinct_defs": [
+        "libgomp-a34b3233.so.1"
+      ],
+      "split_confirmed": false,
+      "bindings": {
+        "libgomp-a34b3233.so.1": [
+          "_swigfaiss_avx2.cpython-311-x86_64-linux-gnu.so",
+          "libtorch_cpu.so"
+        ]
+      }
+    },
+    "GOMP_parallel": {
+      "distinct_defs": [
+        "libgomp-a34b3233.so.1"
+      ],
+      "split_confirmed": false,
+      "bindings": {
+        "libgomp-a34b3233.so.1": [
+          "_swigfaiss_avx2.cpython-311-x86_64-linux-gnu.so",
+          "libtorch_cpu.so"
+        ]
+      }
+    }
+  },
+  "any_split_confirmed": false
+}

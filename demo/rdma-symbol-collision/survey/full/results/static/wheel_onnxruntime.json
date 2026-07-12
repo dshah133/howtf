@@ -1,0 +1,56 @@
+{
+  "unit": "wheel_onnxruntime",
+  "wheels": [
+    "onnxruntime-1.19.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+  ],
+  "n_sos": 3,
+  "so_names": [
+    "libonnxruntime.so.1.19.2",
+    "libonnxruntime_providers_shared.so",
+    "onnxruntime_pybind11_state.cpython-311-x86_64-linux-gnu.so"
+  ],
+  "analysis": {
+    "unit": "wheel_onnxruntime",
+    "exe": "python3",
+    "n_modules": 13,
+    "module_names": [
+      "python3.11",
+      "libpython3.11.so.1.0",
+      "libc.so.6",
+      "libm.so.6",
+      "ld-linux-x86-64.so.2",
+      "libonnxruntime.so.1",
+      "libdl.so.2",
+      "librt.so.1",
+      "libpthread.so.0",
+      "libstdc++.so.6",
+      "libgcc_s.so.1",
+      "libonnxruntime_providers_shared.so",
+      "onnxruntime_pybind11_state.cpython-311-x86_64-linux-gnu.so"
+    ],
+    "tier0_count": 10,
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier0_symbols": [
+      "__finite",
+      "__finitef",
+      "__finitel",
+      "__signbit",
+      "__signbitf",
+      "__signbitl",
+      "_dl_catch_error",
+      "_dl_catch_exception",
+      "_dl_signal_error",
+      "_dl_signal_exception"
+    ],
+    "tier1_symbols": [],
+    "tier2_splits": [],
+    "verdict_counts": {
+      "NO-SPLIT": 10,
+      "WEAK-PATTERN": 18
+    },
+    "families_tier0": {},
+    "families_tier2": {},
+    "missing_needed": []
+  }
+}

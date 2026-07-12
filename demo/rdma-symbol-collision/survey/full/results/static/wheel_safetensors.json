@@ -1,0 +1,52 @@
+{
+  "unit": "wheel_safetensors",
+  "wheels": [
+    "safetensors-0.4.5-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+  ],
+  "n_sos": 1,
+  "so_names": [
+    "_safetensors_rust.cpython-311-x86_64-linux-gnu.so"
+  ],
+  "analysis": {
+    "unit": "wheel_safetensors",
+    "exe": "python3",
+    "n_modules": 10,
+    "module_names": [
+      "python3.11",
+      "libpython3.11.so.1.0",
+      "libc.so.6",
+      "libm.so.6",
+      "ld-linux-x86-64.so.2",
+      "_safetensors_rust.cpython-311-x86_64-linux-gnu.so",
+      "libgcc_s.so.1",
+      "librt.so.1",
+      "libpthread.so.0",
+      "libdl.so.2"
+    ],
+    "tier0_count": 10,
+    "tier1_count": 0,
+    "tier2_count": 0,
+    "tier0_symbols": [
+      "__finite",
+      "__finitef",
+      "__finitel",
+      "__signbit",
+      "__signbitf",
+      "__signbitl",
+      "_dl_catch_error",
+      "_dl_catch_exception",
+      "_dl_signal_error",
+      "_dl_signal_exception"
+    ],
+    "tier1_symbols": [],
+    "tier2_splits": [],
+    "verdict_counts": {
+      "NO-SPLIT": 10,
+      "WEAK-PATTERN": 18,
+      "HIDDEN-BENIGN": 2
+    },
+    "families_tier0": {},
+    "families_tier2": {},
+    "missing_needed": []
+  }
+}
