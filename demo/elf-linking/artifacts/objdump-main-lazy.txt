@@ -1,0 +1,14 @@
+0000000000001169 <main>:
+    1169:	f3 0f 1e fa          	endbr64 
+    116d:	55                   	push   %rbp
+    116e:	48 89 e5             	mov    %rsp,%rbp
+    1171:	48 83 ec 10          	sub    $0x10,%rsp
+    1175:	be 0a 00 00 00       	mov    $0xa,%esi
+    117a:	bf 05 00 00 00       	mov    $0x5,%edi
+    117f:	e8 dc fe ff ff       	call   1060 <add@plt>
+    1184:	89 45 fc             	mov    %eax,-0x4(%rbp)
+    1187:	bf 3c 00 00 00       	mov    $0x3c,%edi
+    118c:	e8 df fe ff ff       	call   1070 <sleep@plt>
+    1191:	8b 45 fc             	mov    -0x4(%rbp),%eax
+    1194:	c9                   	leave  
+    1195:	c3                   	ret    

@@ -1,0 +1,6 @@
+$ ./got_watch   # built like dynamic_app_lazy, plus -DSLOT_OFF=0x0000000000004018
+GOT slot for add lives at 0x555555558018
+  before first call : 0x0000555555555030  <- points back into our own .plt
+  add(5, 10) returns: 15      <- first call takes the resolver detour
+  after first call  : 0x00007fffff7bd0f9  <- patched!
+  libmath.so code   : 7fffff7bd000-7fffff7be000 r-xp 00001000 00:2d 85                         /code/libmath.so

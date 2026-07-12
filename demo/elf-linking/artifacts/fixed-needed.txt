@@ -1,0 +1,3 @@
+ 0x0000000000000001 (NEEDED)             Shared library: [libmath.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN]

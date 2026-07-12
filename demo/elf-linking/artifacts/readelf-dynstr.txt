@@ -1,0 +1,15 @@
+
+String dump of section '.dynstr':
+  [     1]  __cxa_finalize
+  [    10]  _ITM_registerTMCloneTable
+  [    2a]  _ITM_deregisterTMCloneTable
+  [    46]  __gmon_start__
+  [    55]  add
+  [    59]  __libc_start_main
+  [    6b]  sleep
+  [    71]  libmath.so
+  [    7c]  libc.so.6
+  [    86]  GLIBC_2.2.5
+  [    92]  GLIBC_2.34
+  [    9d]  $ORIGIN
+

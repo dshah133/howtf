@@ -1,0 +1,3 @@
+ldd (Ubuntu GLIBC 2.31-0ubuntu9.17) 2.31
+# running the 24.04-built binary on 20.04:
+./dynamic_app_glibc234: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found (required by ./dynamic_app_glibc234)
