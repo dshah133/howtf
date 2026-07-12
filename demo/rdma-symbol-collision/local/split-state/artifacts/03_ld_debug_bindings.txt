@@ -1,5 +1,5 @@
 # The collective's vx_get_device_list reference binds to the EXECUTABLE
-# (app_bug_a), i.e. the empty static copy -- while the constructor filled
-# the SHARED copy. That split is the bug.
+# (app_bug) -- the empty static copy -- while the constructor filled the
+# SHARED copy. That split is the bug.
 
-        44:	binding file build/libcollective.so [0] to ./build/app_bug_a [0]: normal symbol `vx_get_device_list'
+        95:	binding file build/libcollective.so [0] to ./build/app_bug [0]: normal symbol `vx_get_device_list'
