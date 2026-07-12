@@ -1,0 +1,6 @@
+    [constructor in copy=STATIC] registering rxe_train, rxe_store
+    [register -> copy=STATIC] this copy's table now holds 1 device(s)
+    [register -> copy=STATIC] this copy's table now holds 2 device(s)
+    [get_list <- copy=SHARED] this copy holds 0 device(s)
+== app: running collective device discovery ==
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***

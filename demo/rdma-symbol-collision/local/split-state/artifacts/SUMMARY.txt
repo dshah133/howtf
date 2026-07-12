@@ -1,0 +1,9 @@
+SPLIT-STATE (mixed static/dynamic interposition) -- EVIDENCE SUMMARY
+generated on aarch64 / aarch64-linux-gnu
+
+bug-a (registration->shared copy, lookup->static empty): 1 not-found ->   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+bug-b (registration->static copy, lookup->shared empty): 1 not-found ->   collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+
+See 03_ld_debug_bindings.txt for the dynamic-linker proof, 01_nm_* for the
+duplicate symbols, 05_nondeterminism.txt for the identical-source contrast,
+and 06_fix_ladder.txt for what fixes it and what does not.
