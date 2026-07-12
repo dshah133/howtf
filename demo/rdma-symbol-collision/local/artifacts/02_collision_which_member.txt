@@ -1,0 +1,39 @@
+# GNU ld map: 'Archive member included to satisfy reference by file (symbol)'
+# This section proves WHICH archive member the linker pulled and WHY.
+
+Archive member included to satisfy reference by file (symbol)
+
+build/libcollective_a.a(collective_a.o)
+                              build/app.o (collective_a_run)
+build/libverbs_vendor.a(vendor_open.o)
+                              build/libcollective_a.a(collective_a.o) (vx_open_device)
+build/libverbs_vendor.a(vendor_name.o)
+                              build/libcollective_a.a(collective_a.o) (vx_device_name)
+build/libcollective_b.a(collective_b.o)
+                              build/app.o (collective_b_run)
+
+# --cref cross-reference for vx_open_device (definer is the FIRST file listed):
+vx_open_device                                    build/libverbs_vendor.a(vendor_open.o)
+                                                  build/libcollective_b.a(collective_b.o)
+                                                  build/libcollective_a.a(collective_a.o)
+# Proof the bundled copy was NEVER pulled: grep the map for bundled members.
+## vendor_open.o (expect: PRESENT -- it satisfied vx_open_device for everyone):
+5:build/libverbs_vendor.a(vendor_open.o)
+36:                0x0000000000000000        0x0 build/libverbs_vendor.a(vendor_open.o)
+190: .text          0x00000000000008c8        0x0 build/libverbs_vendor.a(vendor_open.o)
+192:                0x00000000000008c8       0x40 build/libverbs_vendor.a(vendor_open.o)
+224: .rodata        0x0000000000000ac8        0x8 build/libverbs_vendor.a(vendor_open.o)
+247: .eh_frame      0x0000000000000cd0       0x18 build/libverbs_vendor.a(vendor_open.o)
+367: .data          0x0000000000020010        0x0 build/libverbs_vendor.a(vendor_open.o)
+397: .bss           0x0000000000020011        0x0 build/libverbs_vendor.a(vendor_open.o)
+439: .comment       0x000000000000002d       0x2e build/libverbs_vendor.a(vendor_open.o)
+466:                0x0000000000000060       0x30 build/libverbs_vendor.a(vendor_open.o)
+479: .debug_info    0x0000000000000182       0x9b build/libverbs_vendor.a(vendor_open.o)
+487: .debug_abbrev  0x00000000000000fa       0x82 build/libverbs_vendor.a(vendor_open.o)
+495: .debug_line    0x00000000000000dd       0x62 build/libverbs_vendor.a(vendor_open.o)
+507: .debug_str     0x0000000000000164       0xdc build/libverbs_vendor.a(vendor_open.o)
+547:                0x0000000000000086       0x4e build/libverbs_vendor.a(vendor_open.o)
+570:                0x000000000000002e       0x17 build/libverbs_vendor.a(vendor_open.o)
+2728:vx_open_device                                    build/libverbs_vendor.a(vendor_open.o)
+## bundled_open.o (expect: ABSENT -- never pulled, so no error, silent misdirection):
+(absent -- confirmed never pulled)

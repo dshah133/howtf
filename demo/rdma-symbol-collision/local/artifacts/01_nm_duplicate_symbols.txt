@@ -1,0 +1,10 @@
+# The SAME strong (T = global text) symbols are defined in BOTH archives.
+# 'T' = global/exported. That is what makes them collide at link time.
+
+## libverbs_vendor.a
+0000000000000000 T vx_open_device
+0000000000000000 T vx_device_name
+
+## libverbs_bundled.a
+0000000000000000 T vx_open_device
+0000000000000000 T vx_device_name

@@ -1,0 +1,8 @@
+
+vendor_open.o:
+0000000000000000 r enumeration_order.0
+0000000000000000 T vx_open_device
+
+vendor_name.o:
+0000000000000000 d names.0
+0000000000000000 T vx_device_name

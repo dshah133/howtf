@@ -1,0 +1,11 @@
+# nm of merged collective_b BEFORE localize-hidden (T = global, even though hidden):
+0000000000000000 T vx_device_name
+0000000000000000 T vx_open_device
+# nm AFTER objcopy --localize-hidden (t = local):
+0000000000000000 t vx_device_name
+0000000000000000 t vx_open_device
+# runtime (fixed):
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 1 -> storage_nic  [expected storage_nic]   OK
+== done ==

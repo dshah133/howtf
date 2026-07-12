@@ -1,0 +1,4 @@
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 0 -> training_nic [expected storage_nic]   *** WRONG DEVICE ***
+== done ==

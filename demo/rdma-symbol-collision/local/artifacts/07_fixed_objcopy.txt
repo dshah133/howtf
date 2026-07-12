@@ -1,0 +1,15 @@
+===== experiment 1: objcopy --localize-symbol on libverbs_bundled.a =====
+# The bundled member is never pulled anyway, so localizing it changes
+# nothing. Still misdirected:
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 0 -> training_nic [expected storage_nic]   *** WRONG DEVICE ***
+== done ==
+
+===== experiment 2: objcopy --redefine-sym namespacing (collective_b + bundled) =====
+# Rename the colliding pair to vx_*__b in BOTH collective_b and its
+# bundled verbs -> no shared global symbol -> each uses its own copy:
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 1 -> storage_nic  [expected storage_nic]   OK
+== done ==

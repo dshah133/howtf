@@ -1,0 +1,4 @@
+/usr/bin/ld: build/libverbs_bundled.a(bundled_open.o): in function `vx_open_device':
+/lab/src/verbs_bundled_open.c:19: multiple definition of `vx_open_device'; build/libverbs_vendor.a(vendor_open.o):/lab/src/verbs_vendor_open.c:14: first defined here
+collect2: error: ld returned 1 exit status
+>>> link failed as expected (multiple definition)

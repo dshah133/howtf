@@ -1,0 +1,9 @@
+# Merged (vendored) objects keep GLOBAL vx_open_device -> the collision
+# here is LOUD (multiple definition), not silent, because the merged
+# member carrying the entry point also carries vx_open_device:
+/usr/bin/ld: build/libcoll_b_vendored.a(coll_b_vendored.o): in function `vx_open_device':
+/lab/src/verbs_bundled_open.c:19: multiple definition of `vx_open_device'; build/libcoll_a_vendored.a(coll_a_vendored.o):/lab/src/verbs_vendor_open.c:14: first defined here
+/usr/bin/ld: build/libcoll_b_vendored.a(coll_b_vendored.o): in function `vx_device_name':
+/lab/src/verbs_bundled_name.c:8: multiple definition of `vx_device_name'; build/libcoll_a_vendored.a(coll_a_vendored.o):/lab/src/verbs_vendor_name.c:10: first defined here
+collect2: error: ld returned 1 exit status
+>>> link failed as expected (multiple definition)
