@@ -1,0 +1,6 @@
+# executable app_B:
+0000000000000b54 T vx_get_device_list
+0000000000000abc T vx_register_device
+# libverbs_shared (bsym):
+0000000000000700 T vx_get_device_list
+0000000000000668 T vx_register_device

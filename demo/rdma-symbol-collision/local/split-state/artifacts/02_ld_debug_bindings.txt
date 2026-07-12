@@ -1,0 +1,10 @@
+# (A) DEFAULT: BOTH the DSO's own vx_register_device AND the collective's
+# vx_get_device_list bind to the EXECUTABLE (app_A) -> same copy, no split.
+app_A : normal symbol `vx_get_device_list'
+app_A : normal symbol `vx_register_device'
+
+# (B) -Bsymbolic-functions: the collective's vx_get_device_list still binds
+# to the executable, but the DSO's own register is bound INTERNALLY at link
+# time (no runtime binding line), so the constructor writes the DSO copy.
+# The table@ addresses in 01_matrix.txt are the proof of the split.
+app_B : normal symbol `vx_get_device_list'

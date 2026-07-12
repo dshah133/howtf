@@ -1,3 +1,4 @@
-# app.c and both .so's are byte-identical; only the app link line differs.
-app_with_static    (redundant static copy linked):    collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
-app_without_static (single copy):                      collective: discovered 2 device(s)
+### app_with_static    (redundant static copy linked):
+  collective: discovered 0 device(s)   *** DEVICE NOT FOUND -- but the constructor DID register devices, into the OTHER copy ***
+### app_without_static (single copy):
+  collective: discovered 2 device(s)
