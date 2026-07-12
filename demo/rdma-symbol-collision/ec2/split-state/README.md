@@ -22,7 +22,17 @@ no export) find both real devices:
 ```
 
 This is the real-hardware confirmation that the default build does NOT split; you
-need a self-binding DSO plus an interposing executable.
+need a self-binding DSO plus an interposing executable. Every register/lookup
+prints the table's address, so the split shows as different `table@` addresses
+for the constructor's writes vs. discovery's reads (config B/C) and the same
+address when there is no split (A/D).
+
+The **canonical, full** gating experiment — including the hidden/protected
+**visibility** configs and the **data-object collision** (device table as a
+global array, where copy relocation prevents the split) — lives in the local
+demo at [`../../local/split-state/`](../../local/split-state/) (`make matrix`).
+This EC2 mirror confirms the function-collision gating (default vs.
+`-Bsymbolic-functions`) on real rxe devices.
 
 ## What else reproduced (captured in `artifacts/`)
 
