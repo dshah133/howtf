@@ -1,0 +1,3 @@
+gcc -shared -fPIC -o libmath.so math.c
+gcc -o dynamic_app main.c -L. -lmath -Wl,-rpath,'$ORIGIN'
+gcc -o dynamic_app_lazy main.c -L. -lmath -Wl,-z,lazy -Wl,-rpath,'$ORIGIN'

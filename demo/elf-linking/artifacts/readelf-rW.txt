@@ -1,0 +1,16 @@
+
+Relocation section '.rela.dyn' at offset 0x580 contains 8 entries:
+    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
+0000000000003d90  0000000000000008 R_X86_64_RELATIVE                         1160
+0000000000003d98  0000000000000008 R_X86_64_RELATIVE                         1120
+0000000000004008  0000000000000008 R_X86_64_RELATIVE                         4008
+0000000000003fd8  0000000100000006 R_X86_64_GLOB_DAT      0000000000000000 __libc_start_main@GLIBC_2.34 + 0
+0000000000003fe0  0000000200000006 R_X86_64_GLOB_DAT      0000000000000000 _ITM_deregisterTMCloneTable + 0
+0000000000003fe8  0000000400000006 R_X86_64_GLOB_DAT      0000000000000000 __gmon_start__ + 0
+0000000000003ff0  0000000500000006 R_X86_64_GLOB_DAT      0000000000000000 _ITM_registerTMCloneTable + 0
+0000000000003ff8  0000000700000006 R_X86_64_GLOB_DAT      0000000000000000 __cxa_finalize@GLIBC_2.2.5 + 0
+
+Relocation section '.rela.plt' at offset 0x640 contains 2 entries:
+    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
+0000000000003fc8  0000000300000007 R_X86_64_JUMP_SLOT     0000000000000000 add + 0
+0000000000003fd0  0000000600000007 R_X86_64_JUMP_SLOT     0000000000000000 sleep@GLIBC_2.2.5 + 0

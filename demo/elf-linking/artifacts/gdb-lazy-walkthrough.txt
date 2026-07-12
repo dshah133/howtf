@@ -1,0 +1,25 @@
+# JUMP_SLOT for 'add' at file offset 0x; gdb PIE base 0x555555554000
+Breakpoint 1 at 0x1171
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+
+--- the PLT stub for add ---
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+
+--- GOT slot BEFORE first call ---
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+
+--- step over the first add() call ---
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+
+--- GOT slot AFTER first call ---
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.
+
+--- the real address of add ---
+Couldn't get registers: Input/output error.
+Couldn't get registers: Input/output error.

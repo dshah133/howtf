@@ -1,0 +1,30 @@
+
+./dynamic_app_lazy:     file format elf64-x86-64
+
+
+Disassembly of section .plt:
+
+0000000000001020 <.plt>:
+    1020:	ff 35 e2 2f 00 00    	push   0x2fe2(%rip)        # 4008 <_GLOBAL_OFFSET_TABLE_+0x8>
+    1026:	f2 ff 25 e3 2f 00 00 	bnd jmp *0x2fe3(%rip)        # 4010 <_GLOBAL_OFFSET_TABLE_+0x10>
+    102d:	0f 1f 00             	nopl   (%rax)
+    1030:	f3 0f 1e fa          	endbr64 
+    1034:	68 00 00 00 00       	push   $0x0
+    1039:	f2 e9 e1 ff ff ff    	bnd jmp 1020 <_init+0x20>
+    103f:	90                   	nop
+    1040:	f3 0f 1e fa          	endbr64 
+    1044:	68 01 00 00 00       	push   $0x1
+    1049:	f2 e9 d1 ff ff ff    	bnd jmp 1020 <_init+0x20>
+    104f:	90                   	nop
+
+Disassembly of section .plt.sec:
+
+0000000000001060 <add@plt>:
+    1060:	f3 0f 1e fa          	endbr64 
+    1064:	f2 ff 25 ad 2f 00 00 	bnd jmp *0x2fad(%rip)        # 4018 <add@Base>
+    106b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)
+
+0000000000001070 <sleep@plt>:
+    1070:	f3 0f 1e fa          	endbr64 
+    1074:	f2 ff 25 a5 2f 00 00 	bnd jmp *0x2fa5(%rip)        # 4020 <sleep@GLIBC_2.2.5>
+    107b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)

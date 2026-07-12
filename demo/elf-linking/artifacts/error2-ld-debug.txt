@@ -1,0 +1,8 @@
+      3937:	find library=libc.so.6 [0]; searching
+      3937:	  trying file=/lib/x86_64-linux-gnu/libc.so.6
+      3940:	find library=libmath.so [0]; searching
+      3940:	 search path=/code/glibc-hwcaps/x86-64-v3:/code/glibc-hwcaps/x86-64-v2:/code/tls/haswell/x86_64:/code/tls/haswell:/code/tls/x86_64:/code/tls:/code/haswell/x86_64:/code/haswell:/code/x86_64:/code		(RUNPATH from file /code/dynamic_app)
+      3940:	  trying file=/code/glibc-hwcaps/x86-64-v3/libmath.so
+      3940:	  trying file=/code/glibc-hwcaps/x86-64-v2/libmath.so
+      3940:	  trying file=/code/tls/haswell/x86_64/libmath.so
+      3940:	  trying file=/code/tls/haswell/libmath.so

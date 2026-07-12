@@ -3,4 +3,7 @@ node_modules
 dist
 .astro
 *.so
+*.o
 private/
+demo/elf-linking/dynamic_app*
+demo/elf-linking/got_watch

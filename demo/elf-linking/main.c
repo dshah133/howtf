@@ -1,15 +1,10 @@
-// main.c
-//
+// main.c — the entire demo program. The interesting part is what links it.
 #include <unistd.h>
 
-extern int add(int, int);
-
-int foo() {
-  return 88;
-}
+extern int add(int a, int b);
 
 int main(void) {
-    int a = add(5, 10);
-    int c = foo() + a;
-    sleep(60);
+    int sum = add(5, 10);
+    sleep(60); /* keeps the process alive so we can read /proc/<pid>/maps */
+    return sum;
 }
