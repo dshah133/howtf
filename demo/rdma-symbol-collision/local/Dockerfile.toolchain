@@ -1,0 +1,10 @@
+# Minimal reusable toolchain image for the static-linking symbol-collision lab.
+# Build once:  docker build -f Dockerfile.toolchain -t howtf-rdma-lab .
+# The lab needs a GNU/ELF toolchain (gcc + GNU binutils: ld, ar, nm, objcopy).
+# macOS ld64/Mach-O does NOT reproduce the archive-member-pulling semantics this
+# demo is about, which is why we run inside Linux.
+FROM ubuntu:24.04
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential binutils make ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /lab
