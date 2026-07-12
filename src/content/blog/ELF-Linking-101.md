@@ -26,7 +26,65 @@ In this post, we take a different approach. We trace the life of a command from 
 **Who is this for?** If you have ever wondered what actually happens between hitting Enter and your code running, this is for you. Some comfort with C helps, and we will touch on assembly and kernel internals in places, but the main narrative is designed to be followed without deep expertise in either. The appendices are where the really gnarly details live.
 
 
-<!-- TODO(figure): fig. 0 'the relay race' — shell -> fork -> execve -> kernel maps segments -> ld.so self-relocates -> resolves deps -> _start -> __libc_start_main -> main, drawn as a two-lane (Ring 3 / Ring 0) baton pass using the entity color code (kernel lane = --krn, loader = --ldr, our code = --sec). This is the post's signature image and OG-card art. -->
+<figure class="frame diagram">
+  <span class="frame-title">fig. 0 — the relay race, keystroke to main()</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 300" role="img" aria-label="Two-lane diagram: user mode hands off to the kernel at execve, the kernel maps segments and the loader, the loader relocates itself and resolves dependencies, then control passes through _start to main">
+      <defs>
+        <marker id="f0a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+        </marker>
+      </defs>
+      <text x="14" y="30" font-family="var(--font-display)" font-size="11" fill="var(--muted)">ring 3</text>
+      <text x="14" y="286" font-family="var(--font-display)" font-size="11" fill="var(--muted)">ring 0</text>
+      <line x1="10" y1="150" x2="710" y2="150" stroke="var(--border)" stroke-dasharray="5 5"/>
+      <g font-family="var(--font-mono)" font-size="11">
+        <rect x="46" y="42" width="104" height="36" fill="var(--sec)" opacity="0.14"/>
+        <rect x="46" y="42" width="104" height="36" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="98" y="64" text-anchor="middle" fill="var(--sec)">shell: ./app ⏎</text>
+        <rect x="180" y="42" width="120" height="36" fill="var(--sec)" opacity="0.14"/>
+        <rect x="180" y="42" width="120" height="36" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="240" y="58" text-anchor="middle" fill="var(--sec)">fork() then</text>
+        <text x="240" y="72" text-anchor="middle" fill="var(--sec)">execve(2)</text>
+        <rect x="160" y="196" width="270" height="52" fill="var(--krn)" opacity="0.14"/>
+        <rect x="160" y="196" width="270" height="52" fill="none" stroke="var(--krn)" stroke-width="1.5"/>
+        <text x="295" y="218" text-anchor="middle" fill="var(--krn)">kernel: load_elf_binary()</text>
+        <text x="295" y="234" text-anchor="middle" fill="var(--krn)">map PT_LOADs · map ld.so via PT_INTERP</text>
+        <rect x="380" y="42" width="150" height="36" fill="var(--ldr)" opacity="0.14"/>
+        <rect x="380" y="42" width="150" height="36" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="455" y="58" text-anchor="middle" fill="var(--ldr)">ld.so: self-relocate,</text>
+        <text x="455" y="72" text-anchor="middle" fill="var(--ldr)">load deps, fill GOT</text>
+        <rect x="560" y="42" width="120" height="36" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+        <text x="620" y="58" text-anchor="middle" fill="var(--muted)">_start →</text>
+        <text x="620" y="72" text-anchor="middle" fill="var(--muted)">__libc_start_main</text>
+        <rect x="586" y="112" width="68" height="30" fill="var(--accent)" opacity="0.18"/>
+        <rect x="586" y="112" width="68" height="30" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+        <text x="620" y="131" text-anchor="middle" fill="var(--accent)">main()</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.4" fill="none" marker-end="url(#f0a)">
+        <path d="M 150 60 L 176 60"/>
+        <path d="M 240 82 C 240 130, 240 160, 250 192"/>
+        <path d="M 380 192 C 400 150, 420 110, 445 82"/>
+        <path d="M 530 60 L 556 60"/>
+        <path d="M 620 82 L 620 108"/>
+      </g>
+      <text x="255" y="136" font-family="var(--font-display)" font-size="10" fill="var(--muted)">the only trip below the line</text>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--sec)"></span>our code</span>
+      <span><span class="k" style="background:var(--krn)"></span>kernel</span>
+      <span><span class="k" style="background:var(--ldr)"></span>loader</span>
+      <span><span class="k" style="background:var(--accent)"></span>the destination</span>
+    </p>
+  </div>
+</figure>
+
+<div class="frame diagram" data-loader-stepper>
+  <span class="frame-title">fig. 0b — the same relay, one step at a time</span>
+  <div class="diagram-body">
+    <noscript><p>This figure is interactive and needs JavaScript; fig. 0 above tells the same story statically.</p></noscript>
+  </div>
+</div>
 
 ---
 
@@ -401,7 +459,87 @@ The before-value is our own image base plus `0x1030` — exactly the `push $0x0`
 
 One trap worth knowing (it bit this demo): `got_watch.c` is careful **never to take `&add`**. The moment a program takes a function's address, the linker must guarantee pointer equality across all objects, so it resolves that symbol eagerly through `.plt.got` and the lazy `JUMP_SLOT` you wanted to watch never exists.
 
-<!-- TODO(figure): fig. 3 'first call vs every call after' — two arrows through the same add@plt stub: path A (first call): main -> add@plt -> GOT slot -> .plt push stub -> resolver -> patches slot -> add; path B (later calls): main -> add@plt -> GOT slot -> add. Same boxes, two highlighted routes; entity colors (--sec for our code, --ldr for resolver, --seg for GOT). -->
+<figure class="frame diagram">
+  <span class="frame-title">fig. 3 — the same stub, two routes</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 680 330" role="img" aria-label="Side-by-side panels showing the first call through the PLT going via the resolver which patches the GOT slot, and every later call going straight through the patched slot">
+      <defs>
+        <marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+        </marker>
+        <marker id="f3l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ldr)"/>
+        </marker>
+      </defs>
+      <text x="170" y="24" text-anchor="middle" font-family="var(--font-display)" font-size="12" fill="var(--muted)">first call (lazy)</text>
+      <text x="510" y="24" text-anchor="middle" font-family="var(--font-display)" font-size="12" fill="var(--muted)">every call after</text>
+      <line x1="340" y1="14" x2="340" y2="316" stroke="var(--border)" stroke-dasharray="4 4"/>
+      <g font-family="var(--font-mono)" font-size="11">
+        <!-- left panel -->
+        <rect x="110" y="40" width="120" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="110" y="40" width="120" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="170" y="59" text-anchor="middle" fill="var(--sec)">main: call add</text>
+        <rect x="110" y="100" width="120" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="110" y="100" width="120" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="170" y="119" text-anchor="middle" fill="var(--sec)">add@plt stub</text>
+        <rect x="110" y="160" width="120" height="30" fill="var(--seg)" opacity="0.14"/>
+        <rect x="110" y="160" width="120" height="30" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="170" y="179" text-anchor="middle" fill="var(--seg)">GOT slot</text>
+        <rect x="30" y="222" width="150" height="34" fill="var(--ldr)" opacity="0.14"/>
+        <rect x="30" y="222" width="150" height="34" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="105" y="239" text-anchor="middle" fill="var(--ldr)">_dl_runtime_resolve</text>
+        <text x="105" y="252" text-anchor="middle" fill="var(--ldr)">finds add, patches slot</text>
+        <rect x="210" y="282" width="100" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="210" y="282" width="100" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="260" y="301" text-anchor="middle" fill="var(--sec)">add()</text>
+        <!-- right panel -->
+        <rect x="450" y="40" width="120" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="450" y="40" width="120" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="510" y="59" text-anchor="middle" fill="var(--sec)">main: call add</text>
+        <rect x="450" y="100" width="120" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="450" y="100" width="120" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="510" y="119" text-anchor="middle" fill="var(--sec)">add@plt stub</text>
+        <rect x="450" y="160" width="120" height="30" fill="var(--seg)" opacity="0.14"/>
+        <rect x="450" y="160" width="120" height="30" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="510" y="179" text-anchor="middle" fill="var(--seg)">GOT slot ✓ patched</text>
+        <rect x="450" y="282" width="120" height="30" fill="var(--sec)" opacity="0.14"/>
+        <rect x="450" y="282" width="120" height="30" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="510" y="301" text-anchor="middle" fill="var(--sec)">add()</text>
+      </g>
+      <g font-family="var(--font-display)" font-size="10">
+        <!-- left arrows: 5 numbered hops -->
+        <g stroke="var(--muted)" stroke-width="1.4" fill="none" marker-end="url(#f3a)">
+          <path d="M 170 70 L 170 96"/>
+          <path d="M 170 130 L 170 156"/>
+          <path d="M 148 190 C 130 202, 122 208, 112 218"/>
+        </g>
+        <g stroke="var(--ldr)" stroke-width="1.4" fill="none" marker-end="url(#f3l)">
+          <path d="M 105 222 C 105 205, 128 192, 140 188" stroke-dasharray="4 3"/>
+          <path d="M 180 250 C 215 262, 235 270, 252 278"/>
+        </g>
+        <text x="182" y="88" fill="var(--muted)">1</text>
+        <text x="182" y="148" fill="var(--muted)">2 slot → back into stub</text>
+        <text x="96" y="208" fill="var(--muted)">3</text>
+        <text x="150" y="204" fill="var(--ldr)">4 patch</text>
+        <text x="238" y="262" fill="var(--ldr)">5</text>
+        <!-- right arrows: 3 hops -->
+        <g stroke="var(--muted)" stroke-width="1.4" fill="none" marker-end="url(#f3a)">
+          <path d="M 510 70 L 510 96"/>
+          <path d="M 510 130 L 510 156"/>
+          <path d="M 510 190 L 510 278"/>
+        </g>
+        <text x="522" y="88" fill="var(--muted)">1</text>
+        <text x="522" y="148" fill="var(--muted)">2</text>
+        <text x="522" y="238" fill="var(--muted)">3 jmp *slot</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--sec)"></span>our code</span>
+      <span><span class="k" style="background:var(--seg)"></span>GOT (data)</span>
+      <span><span class="k" style="background:var(--ldr)"></span>loader</span>
+    </p>
+  </div>
+</figure>
 
 The full static evidence — the complete PLT disassembly, the initial `.got.plt` bytes, the relocation table — is in [Appendix F](#appendix-f-loaders-relocation-mechanism). (If you'd rather drive this with gdb, use native x86-64 Linux: under Rosetta emulation `ptrace` is unavailable, which is exactly why the self-inspecting approach exists.)
 
@@ -881,7 +1019,54 @@ root@container:/code# grep -E 'dynamic_app|libmath|libc|ld-linux|stack' /proc/$p
 ffffedd69000-ffffedd8a000 rw-p 00000000 00:00 0                          [stack]
 ```
 
-<!-- TODO(figure): fig. 4 'the finished address space' — vertical VA map drawn from the maps dump above: our VMAs (one per LOAD), libmath.so, libc.so.6, ld-linux, stack; load_bias annotated; entity color code. -->
+<figure class="frame diagram">
+  <span class="frame-title">fig. 4 — the finished address space (from the maps dump above)</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 640 360" role="img" aria-label="Vertical virtual-address map: the app's LOAD VMAs at the load bias, then libmath, libc, and ld-linux mapped higher, with the kernel-managed stack at the top">
+      <g font-family="var(--font-mono)" font-size="11">
+        <text x="20" y="30" fill="var(--muted)">low VA</text>
+        <text x="20" y="348" fill="var(--muted)">high VA</text>
+        <line x1="150" y1="16" x2="150" y2="352" stroke="var(--border)"/>
+        <!-- app -->
+        <rect x="170" y="30" width="300" height="66" fill="var(--sec)" opacity="0.14"/>
+        <rect x="170" y="30" width="300" height="66" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="320" y="52" text-anchor="middle" fill="var(--sec)">dynamic_app — 5 VMAs, one per LOAD</text>
+        <text x="320" y="68" text-anchor="middle" fill="var(--muted)" font-size="10">r-- · r-x · r-- · r-- · rw-  (RELRO turned the GOT page r--)</text>
+        <text x="142" y="40" text-anchor="end" fill="var(--muted)" font-size="10">0x555555554000</text>
+        <text x="142" y="54" text-anchor="end" fill="var(--sec)" font-size="10">= load_bias</text>
+        <!-- gap -->
+        <text x="320" y="122" text-anchor="middle" fill="var(--muted)">… unmapped gap: touch it and you get SIGSEGV …</text>
+        <!-- libmath -->
+        <rect x="170" y="140" width="300" height="44" fill="var(--seg)" opacity="0.14"/>
+        <rect x="170" y="140" width="300" height="44" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="320" y="160" text-anchor="middle" fill="var(--seg)">libmath.so — 5 VMAs</text>
+        <text x="320" y="176" text-anchor="middle" fill="var(--muted)" font-size="10">mapped by ld.so during dependency discovery</text>
+        <text x="142" y="152" text-anchor="end" fill="var(--muted)" font-size="10">0x7fffff7bc000</text>
+        <!-- libc -->
+        <rect x="170" y="196" width="300" height="44" fill="var(--seg)" opacity="0.14"/>
+        <rect x="170" y="196" width="300" height="44" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="320" y="216" text-anchor="middle" fill="var(--seg)">libc.so.6</text>
+        <text x="320" y="232" text-anchor="middle" fill="var(--muted)" font-size="10">every dynamic process maps one</text>
+        <!-- ld -->
+        <rect x="170" y="252" width="300" height="44" fill="var(--ldr)" opacity="0.14"/>
+        <rect x="170" y="252" width="300" height="44" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="320" y="272" text-anchor="middle" fill="var(--ldr)">ld-linux-x86-64.so.2</text>
+        <text x="320" y="288" text-anchor="middle" fill="var(--muted)" font-size="10">the kernel mapped this one (PT_INTERP) — it mapped everything above</text>
+        <text x="142" y="264" text-anchor="end" fill="var(--muted)" font-size="10">0x7ffffffc4000</text>
+        <!-- stack -->
+        <rect x="170" y="308" width="300" height="34" fill="var(--krn)" opacity="0.14"/>
+        <rect x="170" y="308" width="300" height="34" fill="none" stroke="var(--krn)" stroke-width="1.5" stroke-dasharray="5 3"/>
+        <text x="320" y="329" text-anchor="middle" fill="var(--krn)">[stack] — kernel-managed, grows down</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--sec)"></span>our app</span>
+      <span><span class="k" style="background:var(--seg)"></span>mapped libraries</span>
+      <span><span class="k" style="background:var(--ldr)"></span>loader</span>
+      <span><span class="k" style="background:var(--krn)"></span>kernel</span>
+    </p>
+  </div>
+</figure>
 
 </details>
 

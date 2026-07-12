@@ -136,3 +136,10 @@ const jsonLd = [
     </div>
   </main>
 </Base>
+
+<script>
+  import { mountLoaderStepper } from "../../scripts/loader-stepper";
+  document
+    .querySelectorAll<HTMLElement>("[data-loader-stepper]")
+    .forEach(mountLoaderStepper);
+</script>
