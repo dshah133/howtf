@@ -1,0 +1,11 @@
+    [constructor in copy=SHARED] enumerating 2 REAL rdma device(s)
+    [register -> copy=SHARED] rxe_train (this copy now holds 1)
+    [register -> copy=SHARED] rxe_store (this copy now holds 2)
+    [get_list <- copy=SHARED] this copy holds 2 device(s)
+== real rdma devices present on this host (ibv_get_device_list): 2 ==
+  [0] rxe_train
+  [1] rxe_store
+== app: collective discovery via the (split) verbs registry ==
+  collective: registry reports 2 rdma device(s)
+    opened rxe_train guid=0caff1fffeda5a37
+    opened rxe_store guid=00e4e1fffe8815f9

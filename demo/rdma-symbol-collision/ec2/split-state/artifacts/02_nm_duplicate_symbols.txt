@@ -1,0 +1,7 @@
+# vx_get_device_list defined in BOTH the exe and the DSO:
+## rapp_bug (exe):
+000000000000137e T vx_get_device_list
+0000000000001306 T vx_register_device
+## libverbs_shared.so:
+0000000000001234 T vx_get_device_list
+00000000000011b9 T vx_register_device
