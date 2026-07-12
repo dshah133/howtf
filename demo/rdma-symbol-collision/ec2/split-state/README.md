@@ -6,9 +6,27 @@ A load-time **constructor** enumerates the **real** rdma devices
 discovery binds to the **other** (empty) copy. The app then reports **no rdma
 devices** even though `ibv_devices` — and the app's own preamble — list two.
 
-## What reproduced (captured in `artifacts/`)
+## The gating experiment on real hardware (`make matrix`, `artifacts/02_matrix.txt`)
 
-`bug` run (`artifacts/04_bug_run.txt`):
+The same four-configuration matrix as the local demo, but the constructor
+enumerates the **real** rxe devices. The split is real in exactly configs B and
+C (DSO self-binds via `-Bsymbolic-functions`/`-Bsymbolic` **and** the executable
+exports its copy); configs A (default, no self-bind) and D (`--exclude-libs,ALL`,
+no export) find both real devices:
+
+```
+(A) default          register->STATIC  get_list<-STATIC  -> registry reports 2 rdma device(s)
+(B) -Bsymbolic-funcs  register->SHARED  get_list<-STATIC  -> 0 device(s)  *** NO DEVICE FOUND ***
+(C) -Bsymbolic full   register->SHARED  get_list<-STATIC  -> 0 device(s)  *** NO DEVICE FOUND ***
+(D) -Bsym-funcs +excl register->SHARED  get_list<-SHARED  -> registry reports 2 rdma device(s)
+```
+
+This is the real-hardware confirmation that the default build does NOT split; you
+need a self-binding DSO plus an interposing executable.
+
+## What else reproduced (captured in `artifacts/`)
+
+`bug` run (config B, `artifacts/05_bug_run.txt`):
 
 ```
 [constructor in copy=SHARED] enumerating 2 REAL rdma device(s)
@@ -22,7 +40,7 @@ devices** even though `ibv_devices` — and the app's own preamble — list two.
   collective: registry reports 0 rdma device(s)   *** NO DEVICE FOUND -- but the constructor enumerated the real devices into the OTHER copy ***
 ```
 
-`fixed` run (single canonical copy, `artifacts/05_fixed_run.txt`):
+`fixed` run (single canonical copy, `artifacts/06_fixed_run.txt`):
 
 ```
   collective: registry reports 2 rdma device(s)
@@ -30,8 +48,8 @@ devices** even though `ibv_devices` — and the app's own preamble — list two.
     opened rxe_store guid=00e4e1fffe8815f9
 ```
 
-`nm` (`02_nm_duplicate_symbols.txt`) shows `vx_get_device_list` defined in both
-the executable and the DSO; `LD_DEBUG=bindings` (`03_ld_debug_bindings.txt`)
+`nm` (`03_nm_duplicate_symbols.txt`) shows `vx_get_device_list` defined in both
+the executable and the DSO; `LD_DEBUG=bindings` (`04_ld_debug_bindings.txt`)
 proves the collective bound to the executable's copy:
 
 ```
@@ -43,9 +61,10 @@ binding file build/libcollective.so [0] to ./build/rapp_bug [0]: normal symbol `
 ```sh
 # on the instance (rxe devices already up via ../setup-rxe.sh):
 cd ~/rdma-split/src   # or scp this src/ over
+make matrix           # four-configuration gating experiment on the real rxe devices
 make bug              # constructor fills the shared copy; discovery reads the static (empty) copy
 make fixed            # single copy -> registry reports both real devices and opens them
-make evidence         # capture nm + LD_DEBUG + runtime into ../artifacts/
+make evidence         # capture matrix + nm + LD_DEBUG + runtime into ../artifacts/
 ```
 
 Instance / teardown details are in [`../README.md`](../README.md). This mirror
