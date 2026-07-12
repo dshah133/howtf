@@ -1,0 +1,11 @@
+# Even with -fvisibility=hidden the verbs symbols stay GLOBAL for the
+# static executable link (hidden controls DYNAMIC export, not static
+# archive resolution). nm still shows 'T':
+0000000000000000 T vx_open_device
+0000000000000000 T vx_device_name
+
+# runtime (still misdirected):
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 0 -> training_nic [expected storage_nic]   *** WRONG DEVICE ***
+== done ==

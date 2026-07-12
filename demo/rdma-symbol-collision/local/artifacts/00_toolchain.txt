@@ -1,0 +1,11 @@
+# uname
+Linux 04529a0ba2bf 6.12.69-linuxkit #1 SMP Mon Feb 16 11:19:06 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+
+# gcc
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# ld
+GNU ld (GNU Binutils for Ubuntu) 2.42
+# nm
+GNU nm (GNU Binutils for Ubuntu) 2.42
+# objcopy
+GNU objcopy (GNU Binutils for Ubuntu) 2.42

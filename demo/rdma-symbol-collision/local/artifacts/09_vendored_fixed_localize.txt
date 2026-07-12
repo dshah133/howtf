@@ -1,0 +1,11 @@
+# nm of merged collective_b BEFORE --localize-symbol (T = global):
+0000000000000000 T vx_device_name
+0000000000000000 T vx_open_device
+# nm AFTER --localize-symbol (t = local -> no cross-library collision):
+0000000000000000 t vx_device_name
+0000000000000000 t vx_open_device
+# runtime (fixed -- each collective uses its own copy):
+== training job: initializing collectives ==
+  collective_a (training/allreduce): opened logical dev 0 -> physical 0 -> training_nic [expected training_nic]  OK
+  collective_b (checkpoint/storage): opened logical dev 0 -> physical 1 -> storage_nic  [expected storage_nic]   OK
+== done ==

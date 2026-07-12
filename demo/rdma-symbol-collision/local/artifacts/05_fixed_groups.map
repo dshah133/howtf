@@ -1,0 +1,596 @@
+Archive member included to satisfy reference by file (symbol)
+
+build/libcollective_a.a(collective_a.o)
+                              build/app.o (collective_a_run)
+build/libverbs_vendor.a(vendor_open.o)
+                              build/libcollective_a.a(collective_a.o) (vx_open_device)
+build/libverbs_vendor.a(vendor_name.o)
+                              build/libcollective_a.a(collective_a.o) (vx_device_name)
+build/libcollective_b.a(collective_b.o)
+                              build/app.o (collective_b_run)
+
+Merging program properties
+
+Removed property 0xc0000000 to merge /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o (0x3) and /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o (not found)
+Removed property 0xc0000000 to merge /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o (not found) and /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o (0x3)
+
+As-needed library included to satisfy reference by file (symbol)
+
+libc.so.6                     build/app.o (puts@@GLIBC_2.17)
+
+Discarded input sections
+
+ .note.GNU-stack
+                0x0000000000000000        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ .note.gnu.property
+                0x0000000000000000       0x20 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 build/app.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 build/libcollective_a.a(collective_a.o)
+ .note.GNU-stack
+                0x0000000000000000        0x0 build/libverbs_vendor.a(vendor_open.o)
+ .note.GNU-stack
+                0x0000000000000000        0x0 build/libverbs_vendor.a(vendor_name.o)
+ .note.GNU-stack
+                0x0000000000000000        0x0 build/libcollective_b.a(collective_b.o)
+ .note.GNU-stack
+                0x0000000000000000        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ .note.gnu.property
+                0x0000000000000000       0x20 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+LOAD build/app.o
+START GROUP
+LOAD build/libcollective_a.a
+LOAD build/libverbs_vendor.a
+LOAD build/libcollective_b.a
+LOAD build/libverbs_bundled.a
+END GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc.a
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc_s.so
+START GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/libgcc_s.so.1
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc.a
+END GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/libc.so
+START GROUP
+LOAD /lib/aarch64-linux-gnu/libc.so.6
+LOAD /usr/lib/aarch64-linux-gnu/libc_nonshared.a
+LOAD /lib/ld-linux-aarch64.so.1
+END GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc.a
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc_s.so
+START GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/libgcc_s.so.1
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/libgcc.a
+END GROUP
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+LOAD /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+                [!provide]                        PROVIDE (__executable_start = SEGMENT_START ("text-segment", 0x0))
+                0x0000000000000238                . = (SEGMENT_START ("text-segment", 0x0) + SIZEOF_HEADERS)
+
+.interp         0x0000000000000238       0x1b
+ *(.interp)
+ .interp        0x0000000000000238       0x1b /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.note.gnu.build-id
+                0x0000000000000254       0x24
+ *(.note.gnu.build-id)
+ .note.gnu.build-id
+                0x0000000000000254       0x24 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.note.ABI-tag   0x0000000000000278       0x20
+ .note.ABI-tag  0x0000000000000278       0x20 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.hash
+ *(.hash)
+
+.gnu.hash       0x0000000000000298       0x1c
+ *(.gnu.hash)
+ .gnu.hash      0x0000000000000298       0x1c /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.dynsym         0x00000000000002b8      0x120
+ *(.dynsym)
+ .dynsym        0x00000000000002b8      0x120 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.dynstr         0x00000000000003d8       0xa0
+ *(.dynstr)
+ .dynstr        0x00000000000003d8       0xa0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.gnu.version    0x0000000000000478       0x18
+ *(.gnu.version)
+ .gnu.version   0x0000000000000478       0x18 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.gnu.version_d  0x0000000000000490        0x0
+ *(.gnu.version_d)
+ .gnu.version_d
+                0x0000000000000490        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.gnu.version_r  0x0000000000000490       0x30
+ *(.gnu.version_r)
+ .gnu.version_r
+                0x0000000000000490       0x30 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.rela.dyn       0x00000000000004c0       0xf0
+ *(.rela.init)
+ *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*)
+ *(.rela.fini)
+ *(.rela.rodata .rela.rodata.* .rela.gnu.linkonce.r.*)
+ *(.rela.data .rela.data.* .rela.gnu.linkonce.d.*)
+ .rela.data.rel.ro
+                0x00000000000004c0        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .rela.data.rel.local
+                0x00000000000004c0       0x18 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .rela.data.rel.ro.local
+                0x00000000000004d8       0x30 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.rela.tdata .rela.tdata.* .rela.gnu.linkonce.td.*)
+ *(.rela.tbss .rela.tbss.* .rela.gnu.linkonce.tb.*)
+ *(.rela.ctors)
+ *(.rela.dtors)
+ *(.rela.got)
+ .rela.got      0x0000000000000508       0x78 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.rela.bss .rela.bss.* .rela.gnu.linkonce.b.*)
+ .rela.bss      0x0000000000000580        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.rela.ifunc)
+ .rela.ifunc    0x0000000000000580        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .rela.fini_array
+                0x0000000000000580       0x18 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .rela.init_array
+                0x0000000000000598       0x18 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.rela.plt       0x00000000000005b0       0xa8
+ *(.rela.plt)
+ .rela.plt      0x00000000000005b0       0xa8 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.rela.iplt)
+
+.init           0x0000000000000658       0x18
+ *(SORT_NONE(.init))
+ .init          0x0000000000000658       0x10 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+                0x0000000000000658                _init
+ .init          0x0000000000000668        0x8 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+
+.plt            0x0000000000000670       0x90
+ *(.plt)
+ .plt           0x0000000000000670       0x90 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.iplt)
+
+.text           0x0000000000000700      0x2c8
+ *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+ *(.text.exit .text.exit.*)
+ *(.text.startup .text.startup.*)
+ *(.text.hot .text.hot.*)
+ *(SORT_BY_NAME(.text.sorted.*))
+ *(.text .stub .text.* .gnu.linkonce.t.*)
+ .text          0x0000000000000700       0x34 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x0000000000000700                _start
+ .text          0x0000000000000734       0x14 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+ *fill*         0x0000000000000748        0x8 1f2003d5
+ .text          0x0000000000000750       0xc8 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ .text          0x0000000000000818        0x0 build/app.o
+ .text.main     0x0000000000000818       0x34 build/app.o
+                0x0000000000000818                main
+ .text          0x000000000000084c        0x0 build/libcollective_a.a(collective_a.o)
+ .text.collective_a_run
+                0x000000000000084c       0x7c build/libcollective_a.a(collective_a.o)
+                0x000000000000084c                collective_a_run
+ .text          0x00000000000008c8        0x0 build/libverbs_vendor.a(vendor_open.o)
+ .text.vx_open_device
+                0x00000000000008c8       0x40 build/libverbs_vendor.a(vendor_open.o)
+                0x00000000000008c8                vx_open_device
+ .text          0x0000000000000908        0x0 build/libverbs_vendor.a(vendor_name.o)
+ .text.vx_device_name
+                0x0000000000000908       0x44 build/libverbs_vendor.a(vendor_name.o)
+                0x0000000000000908                vx_device_name
+ .text          0x000000000000094c        0x0 build/libcollective_b.a(collective_b.o)
+ .text.collective_b_run
+                0x000000000000094c       0x7c build/libcollective_b.a(collective_b.o)
+                0x000000000000094c                collective_b_run
+ .text          0x00000000000009c8        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ .text          0x00000000000009c8        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+ *(.gnu.warning)
+
+.fini           0x00000000000009c8       0x14
+ *(SORT_NONE(.fini))
+ .fini          0x00000000000009c8        0xc /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+                0x00000000000009c8                _fini
+ .fini          0x00000000000009d4        0x8 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+                [!provide]                        PROVIDE (__etext = .)
+                [!provide]                        PROVIDE (_etext = .)
+                [!provide]                        PROVIDE (etext = .)
+
+.rodata         0x00000000000009e0      0x1bf
+ *(.rodata .rodata.* .gnu.linkonce.r.*)
+ .rodata.cst4   0x00000000000009e0        0x4 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x00000000000009e0                _IO_stdin_used
+ *fill*         0x00000000000009e4        0x4 
+ .rodata        0x00000000000009e8       0x3b build/app.o
+ *fill*         0x0000000000000a23        0x5 
+ .rodata        0x0000000000000a28       0x9f build/libcollective_a.a(collective_a.o)
+ *fill*         0x0000000000000ac7        0x1 
+ .rodata        0x0000000000000ac8        0x8 build/libverbs_vendor.a(vendor_open.o)
+ .rodata        0x0000000000000ad0       0x2c build/libverbs_vendor.a(vendor_name.o)
+ *fill*         0x0000000000000afc        0x4 
+ .rodata        0x0000000000000b00       0x9f build/libcollective_b.a(collective_b.o)
+
+.rodata1
+ *(.rodata1)
+
+.eh_frame_hdr   0x0000000000000ba0       0x5c
+ *(.eh_frame_hdr)
+ .eh_frame_hdr  0x0000000000000ba0       0x5c /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x0000000000000ba0                __GNU_EH_FRAME_HDR
+ *(.eh_frame_entry .eh_frame_entry.*)
+
+.eh_frame       0x0000000000000c00      0x124
+ *(.eh_frame)
+ .eh_frame      0x0000000000000c00       0x28 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .eh_frame      0x0000000000000c28       0x68 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+                                         0x78 (size before relaxing)
+ .eh_frame      0x0000000000000c90       0x20 build/app.o
+                                         0x38 (size before relaxing)
+ .eh_frame      0x0000000000000cb0       0x20 build/libcollective_a.a(collective_a.o)
+                                         0x38 (size before relaxing)
+ .eh_frame      0x0000000000000cd0       0x18 build/libverbs_vendor.a(vendor_open.o)
+                                         0x30 (size before relaxing)
+ .eh_frame      0x0000000000000ce8       0x18 build/libverbs_vendor.a(vendor_name.o)
+                                         0x30 (size before relaxing)
+ .eh_frame      0x0000000000000d00       0x20 build/libcollective_b.a(collective_b.o)
+                                         0x38 (size before relaxing)
+ .eh_frame      0x0000000000000d20        0x4 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ *(.eh_frame.*)
+
+.sframe
+ *(.sframe)
+ *(.sframe.*)
+
+.gcc_except_table
+ *(.gcc_except_table .gcc_except_table.*)
+
+.gnu_extab
+ *(.gnu_extab*)
+
+.exception_ranges
+ *(.exception_ranges*)
+                0x000000000001fd70                . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE))
+
+.eh_frame
+ *(.eh_frame)
+ *(.eh_frame.*)
+
+.sframe
+ *(.sframe)
+ *(.sframe.*)
+
+.gnu_extab
+ *(.gnu_extab)
+
+.gcc_except_table
+ *(.gcc_except_table .gcc_except_table.*)
+
+.exception_ranges
+ *(.exception_ranges*)
+
+.tdata          0x000000000001fd70        0x0
+                [!provide]                        PROVIDE (__tdata_start = .)
+ *(.tdata .tdata.* .gnu.linkonce.td.*)
+
+.tbss
+ *(.tbss .tbss.* .gnu.linkonce.tb.*)
+ *(.tcommon)
+
+.preinit_array  0x000000000001fd70        0x0
+                [!provide]                        PROVIDE (__preinit_array_start = .)
+ *(.preinit_array)
+                [!provide]                        PROVIDE (__preinit_array_end = .)
+
+.init_array     0x000000000001fd70        0x8
+                [!provide]                        PROVIDE (__init_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*))
+ *(.init_array EXCLUDE_FILE(*crtend?.o *crtend.o *crtbegin?.o *crtbegin.o) .ctors)
+ .init_array    0x000000000001fd70        0x8 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+                [!provide]                        PROVIDE (__init_array_end = .)
+
+.fini_array     0x000000000001fd78        0x8
+                [!provide]                        PROVIDE (__fini_array_start = .)
+ *(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*))
+ *(.fini_array EXCLUDE_FILE(*crtend?.o *crtend.o *crtbegin?.o *crtbegin.o) .dtors)
+ .fini_array    0x000000000001fd78        0x8 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+                [!provide]                        PROVIDE (__fini_array_end = .)
+
+.ctors
+ *crtbegin.o(.ctors)
+ *crtbegin?.o(.ctors)
+ *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+ *(SORT_BY_NAME(.ctors.*))
+ *(.ctors)
+
+.dtors
+ *crtbegin.o(.dtors)
+ *crtbegin?.o(.dtors)
+ *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+ *(SORT_BY_NAME(.dtors.*))
+ *(.dtors)
+
+.jcr
+ *(.jcr)
+
+.data.rel.ro    0x000000000001fd80       0x10
+ *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*)
+ .data.rel.ro.local
+                0x000000000001fd80       0x10 build/libverbs_vendor.a(vendor_name.o)
+ *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*)
+ .data.rel.ro   0x000000000001fd90        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+
+.dynamic        0x000000000001fd90      0x1f0
+ *(.dynamic)
+ .dynamic       0x000000000001fd90      0x1f0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x000000000001fd90                _DYNAMIC
+
+.got            0x000000000001ff80       0x80
+ *(.got.plt)
+ .got.plt       0x000000000001ff80       0x50 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.igot.plt)
+ *(.got)
+ .got           0x000000000001ffd0       0x30 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x000000000001ffd0                _GLOBAL_OFFSET_TABLE_
+ *(.igot)
+                0x0000000000020000                . = DATA_SEGMENT_RELRO_END (., 0x0)
+
+.data           0x0000000000020000       0x10
+                [!provide]                        PROVIDE (__data_start = .)
+ *(.data .data.* .gnu.linkonce.d.*)
+ .data          0x0000000000020000        0x4 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+                0x0000000000020000                data_start
+                0x0000000000020000                __data_start
+ .data          0x0000000000020004        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+ .data          0x0000000000020004        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ *fill*         0x0000000000020004        0x4 
+ .data.rel.local
+                0x0000000000020008        0x8 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+                0x0000000000020008                __dso_handle
+ .data          0x0000000000020010        0x0 build/app.o
+ .data          0x0000000000020010        0x0 build/libcollective_a.a(collective_a.o)
+ .data          0x0000000000020010        0x0 build/libverbs_vendor.a(vendor_open.o)
+ .data          0x0000000000020010        0x0 build/libverbs_vendor.a(vendor_name.o)
+ .data          0x0000000000020010        0x0 build/libcollective_b.a(collective_b.o)
+ .data          0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ .data          0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+
+.tm_clone_table
+                0x0000000000020010        0x0
+ .tm_clone_table
+                0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ .tm_clone_table
+                0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+
+.data1
+ *(.data1)
+                0x0000000000020010                _edata = .
+                [!provide]                        PROVIDE (edata = .)
+                0x0000000000020010                . = ALIGN (ALIGNOF (NEXT_SECTION))
+                0x0000000000020010                __bss_start = .
+                0x0000000000020010                __bss_start__ = .
+
+.bss            0x0000000000020010        0x8
+ *(.dynbss)
+ .dynbss        0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ *(.bss .bss.* .gnu.linkonce.b.*)
+ .bss           0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/Scrt1.o
+ .bss           0x0000000000020010        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crti.o
+ .bss           0x0000000000020010        0x1 /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+ .bss           0x0000000000020011        0x0 build/app.o
+ .bss           0x0000000000020011        0x0 build/libcollective_a.a(collective_a.o)
+ .bss           0x0000000000020011        0x0 build/libverbs_vendor.a(vendor_open.o)
+ .bss           0x0000000000020011        0x0 build/libverbs_vendor.a(vendor_name.o)
+ .bss           0x0000000000020011        0x0 build/libcollective_b.a(collective_b.o)
+ .bss           0x0000000000020011        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+ .bss           0x0000000000020011        0x0 /usr/lib/gcc/aarch64-linux-gnu/13/../../../aarch64-linux-gnu/crtn.o
+ *(COMMON)
+                0x0000000000020018                . = ALIGN ((. != 0x0)?0x8:0x1)
+ *fill*         0x0000000000020011        0x7 
+                0x0000000000020018                _bss_end__ = .
+                0x0000000000020018                __bss_end__ = .
+                0x0000000000020018                . = ALIGN (0x8)
+                0x0000000000020018                . = SEGMENT_START ("ldata-segment", .)
+                0x0000000000020018                . = ALIGN (0x8)
+                0x0000000000020018                __end__ = .
+                0x0000000000020018                _end = .
+                [!provide]                        PROVIDE (end = .)
+                0x0000000000020018                . = DATA_SEGMENT_END (.)
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+
+.stab.excl
+ *(.stab.excl)
+
+.stab.exclstr
+ *(.stab.exclstr)
+
+.stab.index
+ *(.stab.index)
+
+.stab.indexstr
+ *(.stab.indexstr)
+
+.comment        0x0000000000000000       0x2d
+ *(.comment)
+ .comment       0x0000000000000000       0x2d /usr/lib/gcc/aarch64-linux-gnu/13/crtbeginS.o
+                                         0x2e (size before relaxing)
+ .comment       0x000000000000002d       0x2e build/app.o
+ .comment       0x000000000000002d       0x2e build/libcollective_a.a(collective_a.o)
+ .comment       0x000000000000002d       0x2e build/libverbs_vendor.a(vendor_open.o)
+ .comment       0x000000000000002d       0x2e build/libverbs_vendor.a(vendor_name.o)
+ .comment       0x000000000000002d       0x2e build/libcollective_b.a(collective_b.o)
+ .comment       0x000000000000002d       0x2e /usr/lib/gcc/aarch64-linux-gnu/13/crtendS.o
+
+.gnu.build.attributes
+ *(.gnu.build.attributes .gnu.build.attributes.*)
+
+.debug
+ *(.debug)
+
+.line
+ *(.line)
+
+.debug_srcinfo
+ *(.debug_srcinfo)
+
+.debug_sfnames
+ *(.debug_sfnames)
+
+.debug_aranges  0x0000000000000000       0xf0
+ *(.debug_aranges)
+ .debug_aranges
+                0x0000000000000000       0x30 build/app.o
+ .debug_aranges
+                0x0000000000000030       0x30 build/libcollective_a.a(collective_a.o)
+ .debug_aranges
+                0x0000000000000060       0x30 build/libverbs_vendor.a(vendor_open.o)
+ .debug_aranges
+                0x0000000000000090       0x30 build/libverbs_vendor.a(vendor_name.o)
+ .debug_aranges
+                0x00000000000000c0       0x30 build/libcollective_b.a(collective_b.o)
+
+.debug_pubnames
+ *(.debug_pubnames)
+
+.debug_info     0x0000000000000000      0x3b8
+ *(.debug_info .gnu.linkonce.wi.*)
+ .debug_info    0x0000000000000000       0x94 build/app.o
+ .debug_info    0x0000000000000094       0xee build/libcollective_a.a(collective_a.o)
+ .debug_info    0x0000000000000182       0x9b build/libverbs_vendor.a(vendor_open.o)
+ .debug_info    0x000000000000021d       0xad build/libverbs_vendor.a(vendor_name.o)
+ .debug_info    0x00000000000002ca       0xee build/libcollective_b.a(collective_b.o)
+
+.debug_abbrev   0x0000000000000000      0x2a7
+ *(.debug_abbrev)
+ .debug_abbrev  0x0000000000000000       0x5a build/app.o
+ .debug_abbrev  0x000000000000005a       0xa0 build/libcollective_a.a(collective_a.o)
+ .debug_abbrev  0x00000000000000fa       0x82 build/libverbs_vendor.a(vendor_open.o)
+ .debug_abbrev  0x000000000000017c       0x8b build/libverbs_vendor.a(vendor_name.o)
+ .debug_abbrev  0x0000000000000207       0xa0 build/libcollective_b.a(collective_b.o)
+
+.debug_line     0x0000000000000000      0x223
+ *(.debug_line .debug_line.* .debug_line_end)
+ .debug_line    0x0000000000000000       0x5b build/app.o
+ .debug_line    0x000000000000005b       0x82 build/libcollective_a.a(collective_a.o)
+ .debug_line    0x00000000000000dd       0x62 build/libverbs_vendor.a(vendor_open.o)
+ .debug_line    0x000000000000013f       0x62 build/libverbs_vendor.a(vendor_name.o)
+ .debug_line    0x00000000000001a1       0x82 build/libcollective_b.a(collective_b.o)
+
+.debug_frame
+ *(.debug_frame)
+
+.debug_str      0x0000000000000000      0x164
+ *(.debug_str)
+ .debug_str     0x0000000000000000      0x164 build/app.o
+                                        0x128 (size before relaxing)
+ .debug_str     0x0000000000000164      0x141 build/libcollective_a.a(collective_a.o)
+ .debug_str     0x0000000000000164       0xdc build/libverbs_vendor.a(vendor_open.o)
+ .debug_str     0x0000000000000164       0xd5 build/libverbs_vendor.a(vendor_name.o)
+ .debug_str     0x0000000000000164      0x141 build/libcollective_b.a(collective_b.o)
+
+.debug_loc
+ *(.debug_loc)
+
+.debug_macinfo
+ *(.debug_macinfo)
+
+.debug_weaknames
+ *(.debug_weaknames)
+
+.debug_funcnames
+ *(.debug_funcnames)
+
+.debug_typenames
+ *(.debug_typenames)
+
+.debug_varnames
+ *(.debug_varnames)
+
+.debug_pubtypes
+ *(.debug_pubtypes)
+
+.debug_ranges
+ *(.debug_ranges)
+
+.debug_addr
+ *(.debug_addr)
+
+.debug_line_str
+                0x0000000000000000       0x86
+ *(.debug_line_str)
+ .debug_line_str
+                0x0000000000000000       0x86 build/app.o
+                                         0x24 (size before relaxing)
+ .debug_line_str
+                0x0000000000000086       0x5c build/libcollective_a.a(collective_a.o)
+ .debug_line_str
+                0x0000000000000086       0x4e build/libverbs_vendor.a(vendor_open.o)
+ .debug_line_str
+                0x0000000000000086       0x4e build/libverbs_vendor.a(vendor_name.o)
+ .debug_line_str
+                0x0000000000000086       0x5c build/libcollective_b.a(collective_b.o)
+
+.debug_loclists
+ *(.debug_loclists)
+
+.debug_macro
+ *(.debug_macro)
+
+.debug_names
+ *(.debug_names)
+
+.debug_rnglists
+                0x0000000000000000       0x73
+ *(.debug_rnglists)
+ .debug_rnglists
+                0x0000000000000000       0x17 build/app.o
+ .debug_rnglists
+                0x0000000000000017       0x17 build/libcollective_a.a(collective_a.o)
+ .debug_rnglists
+                0x000000000000002e       0x17 build/libverbs_vendor.a(vendor_open.o)
+ .debug_rnglists
+                0x0000000000000045       0x17 build/libverbs_vendor.a(vendor_name.o)
+ .debug_rnglists
+                0x000000000000005c       0x17 build/libcollective_b.a(collective_b.o)
+
+.debug_str_offsets
+ *(.debug_str_offsets)
+
+.debug_sup
+ *(.debug_sup)
+
+.ARM.attributes
+ *(.ARM.attributes)
+ *(.gnu.attributes)
+
+.note.gnu.arm.ident
+ *(.note.gnu.arm.ident)
+
+/DISCARD/
+ *(.note.GNU-stack)
+ *(.gnu_debuglink)
+ *(.gnu.lto_*)
+OUTPUT(build/app_groups elf64-littleaarch64)
+LOAD linker stubs

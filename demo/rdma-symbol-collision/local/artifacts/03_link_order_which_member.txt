@@ -1,0 +1,18 @@
+# GNU ld map: 'Archive member included to satisfy reference by file (symbol)'
+# This section proves WHICH archive member the linker pulled and WHY.
+
+Archive member included to satisfy reference by file (symbol)
+
+build/libcollective_b.a(collective_b.o)
+                              build/app.o (collective_b_run)
+build/libverbs_bundled.a(bundled_open.o)
+                              build/libcollective_b.a(collective_b.o) (vx_open_device)
+build/libverbs_bundled.a(bundled_name.o)
+                              build/libcollective_b.a(collective_b.o) (vx_device_name)
+build/libcollective_a.a(collective_a.o)
+                              build/app.o (collective_a_run)
+
+# --cref cross-reference for vx_open_device (definer is the FIRST file listed):
+vx_open_device                                    build/libverbs_bundled.a(bundled_open.o)
+                                                  build/libcollective_a.a(collective_a.o)
+                                                  build/libcollective_b.a(collective_b.o)
