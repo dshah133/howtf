@@ -13,9 +13,32 @@
   font-display: swap;
 }
 
+/* iA Writer Quattro: a proportional mono — typewriter texture, prose speed */
+@font-face {
+  font-family: "iA Writer Quattro";
+  src: url("/fonts/iAWriterQuattroS-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "iA Writer Quattro";
+  src: url("/fonts/iAWriterQuattroS-Italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "iA Writer Quattro";
+  src: url("/fonts/iAWriterQuattroS-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --font-display: "Departure Mono", ui-monospace, monospace;
-  --font-body: "Alegreya Sans", system-ui, sans-serif;
+  --font-body: "iA Writer Quattro", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* terminal surfaces are theme-invariant: real sessions are dark */
@@ -84,8 +107,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 1.125rem;
-  line-height: 1.65;
+  font-size: 1.0625rem;
+  line-height: 1.7;
 }
 
 ::selection {
@@ -107,7 +130,7 @@ a:hover {
 }
 b,
 strong {
-  font-weight: 700;
+  font-weight: 700; /* Quattro ships 400/700 + italic 400 — nothing synthetic */
 }
 :focus-visible {
   outline: 2px solid var(--accent);
