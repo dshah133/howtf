@@ -32,8 +32,11 @@ Interposition is a load-bearing ELF feature, so the base rate of benign "defined
 ### Fallback position (stated in the RFC itself)
 If consensus is "this isn't the linker's job," the standalone scanner is the answer, and it exists today. Either outcome is fine — the goal is diagnosability of a silent class, by whatever tool.
 
-### Motivation data
-[Insert survey headline once Phase 2 lands: "In a survey of N manylinux ML wheels, the split-state precondition (a duplicated strong C symbol with a self-binding copy across a realistic co-load boundary) appears in K; the full predicted-split alignment in J." — with the honest ladder showing preconditions are common and full alignment is rarer, which is itself the point: common enough to matter, silent enough to never warn you.]
+### Motivation data (from the ecosystem survey — see repo `survey/full/`)
+The class has two routes, and both are present in stock PyPI ML wheels:
+- **Route B (scope partition), measured live:** co-importing faiss + scikit-learn + torch maps **two distinct builds each of libgomp, libgfortran, and libquadmath** into one process (`/proc/self/maps`); numpy + scipy maps two libgfortran + two libquadmath. Two copies of a runtime's global state, silently coexisting. The ecosystem already manages this by hand (Intel `KMP_DUPLICATE_LIB_OK`, auditwheel soname-hashing, conda single-copy-per-env) without a name for it.
+- **Route A (interposition capture), reproduced:** the `-Bsymbolic` trigger is absent from public wheels (DF_SYMBOLIC = 0 / 366 libs — it lives in monorepo static-link builds), but `import torch` runs `ctypes.CDLL(libtorch_global_deps.so, RTLD_GLOBAL)`, and an `LD_DEBUG` trace shows faiss's OpenMP references rebinding from faiss's libgomp to torch's once torch is imported (127:2 in the trio). A stock-PyPI reproduction of the incident's mechanism.
+The honest point for the RFC: preconditions are everywhere, the full alignment is rarer and scope-dependent, and *nothing warns you at any tier*. An opt-in, allowlist-first diagnostic is exactly the missing tool.
 
 ---
 
