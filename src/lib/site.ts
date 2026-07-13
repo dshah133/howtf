@@ -13,11 +13,12 @@ export const SITE = {
 const WPM = 240;
 
 export function readingTime(body: string): string {
-  const words = body
+  const noFigures = body.replace(/<figure[\s\S]*?<\/figure>/g, " "); // SVG diagram markup isn't prose you read
+  const words = noFigures
     .replace(/```[\s\S]*?```/g, " ") // code blocks read faster than prose; count words only
     .split(/\s+/)
     .filter(Boolean).length;
-  const codeLines = (body.match(/\n/g) || []).length;
+  const codeLines = (noFigures.match(/\n/g) || []).length;
   // rough honest estimate: prose words at 240wpm + a small tax for code density
   const minutes = Math.max(1, Math.round(words / WPM + codeLines / 200));
   return `${minutes} min read`;
