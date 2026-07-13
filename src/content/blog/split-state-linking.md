@@ -26,6 +26,10 @@ Paste that string into a search engine and every hit is hardware troubleshooting
 
 The device was not missing. It showed up in enumeration. The driver was loaded. And the failing consumer was the last one anyone would suspect: NCCL — the most battle-tested RDMA consumer in the fleet, code nobody had touched. Inside the very same processes, a different, much newer library could see every device NCCL claimed didn't exist.
 
+And the failure was selective: the same `No IB devices found`, at startup, every time, in some binaries and not others. All of them built from the same torch commit. The device was present by every check anyone could run, and absent according to the one piece of code whose opinion mattered.
+
+That's the howtf. Same source. Same fleet. Same device, verifiably there. Whether a binary could see it depended on the binary.
+
 Some context, because the shape of the build matters later. This was at Meta. The binaries were application training binaries composed by Buck, with PyTorch built in-house and statically linked — hermetic builds and fast startup are worth a great deal at that scale, [the exact case Part 1 made for why hyperscalers link statically](/blog/ELF-Linking-101/#61-why-hyperscalers-link-statically).
 
 "Composed by Buck" is doing real work in that sentence, and the public tooling documents the backbone of what it means. A Python training program pulls in an enormous amount of native code — torch and everything under it — and not all of it can be statically compiled into one executable, so Buck's [omnibus](https://buck.build/javadoc/com/facebook/buck/cxx/Omnibus.html) strategy does the next-best merge: statically link most of the native code "into a single giant shared library" — a `libomnibus.so` — leaving only the extensions Python imports directly as separate .so's. You pay the full static-link cost once, at build time; at runtime the binary `dlopen`s roughly one big library instead of hundreds.
@@ -108,9 +112,7 @@ Torch was one ingredient; the final artifact was each application's own training
 
 So: two collective libraries in one process. NCCL/NCCLX for the GPUs, the in-house library for MTIA. Both walk the same device list at startup.
 
-The new MTIA path worked. It was the GPU path — NCCL, years in production, untouched by any of this — that started failing: the same `No IB devices found`, at startup, every time, in some binaries and not others. All of them built from the same torch commit. The device was present by every check anyone could run, and absent according to the one piece of code whose opinion mattered.
-
-That's the howtf. Same source. Same fleet. Same device, verifiably there. Whether a binary could see it depended on the binary.
+The new MTIA path worked. It was the GPU path — NCCL, years in production, untouched by any of this — that started failing.
 
 ## 2. The investigation
 
