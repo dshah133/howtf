@@ -1,6 +1,6 @@
 ---
 title: "howtf does ./app reach main()?"
-description: "Trace one command from keystroke to main() — kernel, loader, PLT/GOT — until two classic deploy errors stop being mysterious."
+description: "Trace one command from keystroke to main(), through the kernel, loader, and PLT/GOT, until two classic deploy errors stop being mysterious."
 date: 2026-02-16
 updated: 2026-07-12
 series:
@@ -19,7 +19,7 @@ or
 
 You do a frantic search, blindly paste `export LD_LIBRARY_PATH=` commands, and install random packages until the error disappears. We often treat the execution process as a black box, something that "just works" until it doesn't. These errors are symptoms of a system most engineers never look at closely, and that lack of understanding compounds when you are debugging at scale.
 
-In this post, we take a different approach. We trace the life of a command from the moment you hit `Enter` until it reaches `main()`, watching the kernel, linker, and loader coordinate to turn a file on disk into a running process. Then we flash back to build time (Parts V–VI) to see where the machinery was set up — and at the end, **we reproduce both errors above on purpose and read the diagnosis straight off the binary**. Every dump in this post comes from one reproducible container; the demo and a `regenerate.sh` live [in the site repo](https://github.com/dshah133/howtf/tree/v4/demo/elf-linking).
+In this post, we take a different approach. We trace the life of a command from the moment you hit `Enter` until it reaches `main()`, watching the kernel, linker, and loader coordinate to turn a file on disk into a running process. Then we flash back to build time (Parts V–VI) to see where the machinery was set up. At the end, **we reproduce both errors above on purpose and read the diagnosis straight off the binary**. Every dump in this post comes from one reproducible container; the demo and a `regenerate.sh` live [in the site repo](https://github.com/dshah133/howtf/tree/v4/demo/elf-linking).
 
 **Scope & assumptions.** This walkthrough uses **Linux on x86‑64** as the concrete reference, with the **glibc dynamic loader** (`ld-linux-x86-64.so.2`) as "the loader" we talk about. The big ideas transfer to other architectures and libcs, but some details (relocation types, syscall entry, loader internals, memory-ordering constraints etc.) might differ.
 
@@ -27,7 +27,7 @@ In this post, we take a different approach. We trace the life of a command from 
 
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 0 — the relay race, keystroke to main()</span>
+  <span class="frame-title">fig. 0 · the relay race, keystroke to main()</span>
   <div class="diagram-body">
     <svg viewBox="0 0 720 300" role="img" aria-label="Two-lane diagram: user mode hands off to the kernel at execve, the kernel maps segments and the loader, the loader relocates itself and resolves dependencies, then control passes through _start to main">
       <defs>
@@ -136,7 +136,7 @@ dynamic_app_lazy: main.c libmath.so
 	$(CC) -o dynamic_app_lazy main.c -L. -lmath -Wl,-z,lazy -Wl,-rpath,'$$ORIGIN'
 ```
 
-Two things here are load-bearing, and both will pay off later: we link with `-L. -lmath` (**not** by naming `./libmath.so` directly — the difference reproduces one of our two opening errors, as we'll see in Part VII), and we build a second binary with `-Wl,-z,lazy` (Part III explains why we need to ask for lazy binding explicitly in 2026).
+Two things here are load-bearing, and both will pay off later: we link with `-L. -lmath` (**not** by naming `./libmath.so` directly, a difference that reproduces one of our two opening errors, as we'll see in Part VII), and we build a second binary with `-Wl,-z,lazy` (Part III explains why we need to ask for lazy binding explicitly in 2026).
 
 **2. Start the container**
 
@@ -169,7 +169,7 @@ Makefile  dynamic_app  dynamic_app_lazy  libmath.so  main.c  math.c
 
 You type `./dynamic_app` and hit Enter.
 
-Your shell calls `fork()` to create a child process. That child process calls `execve("./dynamic_app")`, and your app starts running. Simple — as long as nobody asks what `execve` actually did.
+Your shell calls `fork()` to create a child process. That child process calls `execve("./dynamic_app")`, and your app starts running. Simple, as long as nobody asks what `execve` actually did.
 
 ---
 
@@ -179,7 +179,7 @@ Your shell calls `fork()` to create a child process. That child process calls `e
 
 Your shell (bash/zsh) was actually asleep, blocked on a `read()` system call waiting for input. The kernel, tty, keyboard driver, etc. work together to let your shell know exactly what command the user executed.
 
-> How your keystroke actually reaches the shell — PTYs, the line discipline, and why Ctrl+C sometimes can't save you — is a whole story of its own. It's coming as a separate post: *The keyboard dance*.
+> How your keystroke actually reaches the shell (PTYs, the line discipline, and why Ctrl+C sometimes can't save you) is a whole story of its own. It's coming as a separate post: *The keyboard dance*.
 
 ### 1.2 The `fork()` syscall (cloning)
 
@@ -189,9 +189,9 @@ This triggers a hardware transition.
 
 1. **The Trap:** The CPU executes the syscall instruction (opcode `0F 05`).
 2. **The Switch:** The hardware instantly elevates privileges to Ring 0.
-3. **The Lookup:** It consults the Model Specific Registers (MSRs) to jump straight into the kernel's entry point (`entry_SYSCALL_64`) — stashing the user return address in `RCX` and the flags in `R11` on the way. `SYSCALL` touches no stack; the kernel's entry stub switches to a kernel stack in software before it pushes anything.
+3. **The Lookup:** It consults the Model Specific Registers (MSRs) to jump straight into the kernel's entry point (`entry_SYSCALL_64`), stashing the user return address in `RCX` and the flags in `R11` on the way. `SYSCALL` touches no stack; the kernel's entry stub switches to a kernel stack in software before it pushes anything.
 
-> The hardware gate deserves more than three bullets — IDT vs `SYSCALL` entry, TSS/IST stack rules, and KPTI are a separate post: *Before the kernel answers*.
+> The hardware gate deserves more than three bullets. IDT vs `SYSCALL` entry, TSS/IST stack rules, and KPTI are a separate post: *Before the kernel answers*.
 
 It creates a near‑identical copy of the shell (the child process). In practice, the kernel does not duplicate physical memory. It marks the writable private pages as copy‑on‑write (COW), so the two processes share the same physical pages until one of them writes. This child is now running, but it is still running the shell's code.
 
@@ -227,7 +227,7 @@ if (memcmp(elf_ex->e_ident, ELFMAG, SELFMAG) != 0)
 The kernel does **not** care about "sections" (like `.text` or `.data`). Those are build/link time constructions, mainly for the linker. The kernel cares about **segments** (Program Headers), which tell the kernel what exactly to load and where.
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 1 — one file, two readings</span>
+  <span class="frame-title">fig. 1 · one file, two readings</span>
   <div class="diagram-body">
     <svg viewBox="0 0 640 330" role="img" aria-label="Diagram mapping ELF file sections to memory segments">
       <text x="120" y="24" text-anchor="middle" font-family="var(--font-display)" font-size="12" fill="var(--muted)">the file (offsets)</text>
@@ -308,7 +308,7 @@ However, and this matters for correctness, modern toolchains frequently emit **m
 
 1. **Read-Only Metadata (`R`):** ELF headers and dynamic symbol tables.
 2. **The Text Segment (`R E`):** Your actual code (`.text`) and the PLT stubs. This is the only memory executable by the CPU.
-3. **Read-Only Data (`R`):** Constants (`.rodata`) and unwind info. Kept out of the executable mapping (`-z separate-code` is another modern default) so constant data can never be fetched as instructions — it shrinks the attack surface, though it does not by itself prevent ROP.
+3. **Read-Only Data (`R`):** Constants (`.rodata`) and unwind info. Kept out of the executable mapping (`-z separate-code` is another modern default) so constant data can never be fetched as instructions. That shrinks the attack surface, though it does not by itself prevent ROP.
 4. **Writable Data (`RW`):** Global variables (`.data`) and the Global Offset Table (GOT).
 
 See [Appendix D](#appendix-d-segments-deep-dive) for the full `readelf -l` output and a detailed walkthrough.
@@ -359,9 +359,9 @@ if (elf_ppnt->p_type == PT_INTERP) {
 }
 ```
 
-Because `dynamic_app` has this header, the kernel maps the dynamic loader (`ld-linux.so`) into memory with a dedicated helper, `load_elf_interp()` — the interpreter's own `PT_INTERP`, if it had one, would be ignored (which is exactly why `ld.so` must bootstrap itself, as we'll see in Part III). The kernel then sets the instruction pointer to the *loader's* entry point, not your `dynamic_app`'s. ([View Source](https://elixir.bootlin.com/linux/v6.8/source/fs/binfmt_elf.c#L1200))
+Because `dynamic_app` has this header, the kernel maps the dynamic loader (`ld-linux.so`) into memory with a dedicated helper, `load_elf_interp()`. The interpreter's own `PT_INTERP`, if it had one, would be ignored (which is exactly why `ld.so` must bootstrap itself, as we'll see in Part III). The kernel then sets the instruction pointer to the *loader's* entry point, not your `dynamic_app`'s. ([View Source](https://elixir.bootlin.com/linux/v6.8/source/fs/binfmt_elf.c#L1200))
 
-One more thing before the kernel leaves the stage: how will the loader know where *our* binary landed? The kernel writes the answer onto the new process's stack as the **auxiliary vector** — `AT_PHDR` (where the program headers were mapped), `AT_ENTRY` (the app's real entry point), `AT_BASE` (where the interpreter itself landed), and friends. That auxv is the kernel→loader handshake; you can watch it with `LD_SHOW_AUXV=1 ./dynamic_app`.
+One more thing before the kernel leaves the stage: how will the loader know where *our* binary landed? The kernel writes the answer onto the new process's stack as the **auxiliary vector**: `AT_PHDR` (where the program headers were mapped), `AT_ENTRY` (the app's real entry point), `AT_BASE` (where the interpreter itself landed), and friends. That auxv is the kernel→loader handshake; you can watch it with `LD_SHOW_AUXV=1 ./dynamic_app`.
 
 ---
 
@@ -375,11 +375,11 @@ The loader itself is also just a program, just a bit special one as it wakes up 
 
 ### 3.2 Dependency Discovery
 
-Once the loader has healed itself, it becomes a fully functional C program running inside your process. It can now inspect your `dynamic_app`. It reads the `PT_DYNAMIC` segment to find `DT_NEEDED` tags — `libmath.so` and `libc.so.6` in our case — finds each library, and maps it into the process with `mmap`.
+Once the loader has healed itself, it becomes a fully functional C program running inside your process. It can now inspect your `dynamic_app`. It reads the `PT_DYNAMIC` segment to find `DT_NEEDED` tags (`libmath.so` and `libc.so.6` in our case), finds each library, and maps it into the process with `mmap`.
 
 Where does it look? The precedence is specific, and worth stating exactly because our second opening error lives here: `DT_RPATH` (only honored if `DT_RUNPATH` is absent) → `LD_LIBRARY_PATH` → `DT_RUNPATH` (which applies only to the object's *direct* dependencies) → `/etc/ld.so.cache` → the default dirs (`/lib`, `/usr/lib`, …). And one rule that overrides all of it: **if the stored name contains a `/`, it is treated as a path and no search happens at all.** Hold that thought for Part VII.
 
-You can watch the search happen — this is `LD_DEBUG=libs` running our binary, showing the `RUNPATH`-driven probe sequence for `libmath.so`:
+You can watch the search happen. This is `LD_DEBUG=libs` running our binary, showing the `RUNPATH`-driven probe sequence for `libmath.so`:
 
 ```bash
 root@container:/# LD_DEBUG=libs /code/dynamic_app
@@ -399,7 +399,7 @@ There are two strategies for *when* the function-call slots get filled:
 - **Eager (`BIND_NOW`):** resolve every symbol at startup, before your code runs.
 - **Lazy:** leave function slots pointing at a resolver, and fix each one the *first time it's called*.
 
-Textbooks — and the previous version of this post — describe lazy as "the default." **On your distro, it probably isn't.** Look at what Ubuntu's gcc actually passed to the linker (this is from `gcc -v`, Part V shows the full line): `-pie -z now -z relro`. That `-z now` means our default build is eager. The binary says so:
+Textbooks (and the previous version of this post) describe lazy as "the default." **On your distro, it probably isn't.** Look at what Ubuntu's gcc actually passed to the linker (this is from `gcc -v`, Part V shows the full line): `-pie -z now -z relro`. That `-z now` means our default build is eager. The binary says so:
 
 ```bash
 root@container:/code# readelf -d ./dynamic_app | grep -E 'FLAGS'
@@ -412,7 +412,7 @@ root@container:/code# readelf -d ./dynamic_app_lazy | grep -E 'FLAGS'
 
 This is why our Makefile builds `dynamic_app_lazy` with `-Wl,-z,lazy`: in 2026 you have to *ask* for lazy binding to study it.
 
-The difference is also a security posture, and it's visible in RELRO. **RELRO (RELocation Read-Only)** is the `GNU_RELRO` segment: after the loader finishes its patches, it `mprotect`s that region read-only. With `-z now` you get **full RELRO** — every GOT slot is resolved up front, so *all* of them (including the function-call slots) sit inside the protected region. With lazy binding you get **partial RELRO** — the function-call slots (`.got.plt`) must stay writable so the resolver can patch them later. Our two builds show it directly: the `R_X86_64_JUMP_SLOT` entries for `add` and `sleep` land at `0x3fc8/0x3fd0` in the eager build — *inside* its RELRO region `[0x3d90, 0x4000)` — but at `0x4018/0x4020` in the lazy build, *past the end* of its RELRO region `[0x3dc8, 0x4000)`. Same program, same symbols; one layout locks the slots, the other leaves them writable forever. (That writable-GOT window is exactly the classic GOT-overwrite target — a point we'll return to below.)
+The difference is also a security posture, and it's visible in RELRO. **RELRO (RELocation Read-Only)** is the `GNU_RELRO` segment: after the loader finishes its patches, it `mprotect`s that region read-only. With `-z now` you get **full RELRO**: every GOT slot is resolved up front, so *all* of them (including the function-call slots) sit inside the protected region. With lazy binding you get **partial RELRO**: the function-call slots (`.got.plt`) must stay writable so the resolver can patch them later. Our two builds show it directly: the `R_X86_64_JUMP_SLOT` entries for `add` and `sleep` land at `0x3fc8/0x3fd0` in the eager build, *inside* its RELRO region `[0x3d90, 0x4000)`, but at `0x4018/0x4020` in the lazy build, *past the end* of its RELRO region `[0x3dc8, 0x4000)`. Same program, same symbols; one layout locks the slots, the other leaves them writable forever. (That writable-GOT window is exactly the classic GOT-overwrite target, a point we'll return to below.)
 
 ### 3.4 Lazy binding, watched live
 
@@ -435,9 +435,9 @@ Eager binding is easy to imagine: a loop over relocation entries at startup (App
     1039:  f2 e9 e1 ff ff ff     bnd jmp 1020            ; the common resolver stub
 ```
 
-`main` doesn't call `add` — it calls `add@plt`, a tiny trampoline that jumps *through GOT slot `0x4018`*. And what does that slot contain before the first call? The file itself tells us — `readelf -x .got.plt` shows slot `0x4018` holding `0x1030`: **it points back into the PLT**, at the very next instruction of the dance. So the first call goes `main → add@plt → (through GOT) → push $0x0 → resolver`, the resolver figures out which symbol relocation index 0 is, finds `add` in `libmath.so`, and **patches the GOT slot** so every later call jumps straight there.
+`main` doesn't call `add`. It calls `add@plt`, a tiny trampoline that jumps *through GOT slot `0x4018`*. And what does that slot contain before the first call? The file itself tells us. `readelf -x .got.plt` shows slot `0x4018` holding `0x1030`: **it points back into the PLT**, at the very next instruction of the dance. So the first call goes `main → add@plt → (through GOT) → push $0x0 → resolver`, the resolver figures out which symbol relocation index 0 is, finds `add` in `libmath.so`, and **patches the GOT slot** so every later call jumps straight there.
 
-Don't take my word for the patch — the demo binary can watch its own GOT slot change. `got_watch.c` (in the demo repo) reads the slot for `add` before and after the first call:
+Don't take my word for the patch: the demo binary can watch its own GOT slot change. `got_watch.c` (in the demo repo) reads the slot for `add` before and after the first call:
 
 ```bash
 root@container:/code# ./got_watch
@@ -448,12 +448,12 @@ GOT slot for add lives at 0x555555558018
   libmath.so code   : 7fffff7bd000-7fffff7be000 r-xp ... /code/libmath.so
 ```
 
-The before-value is our own image base plus `0x1030` — exactly the `push $0x0` stub in the `.plt` dump above. The after-value lands inside `libmath.so`'s executable mapping: it's `add` itself.
+The before-value is our own image base plus `0x1030`, exactly the `push $0x0` stub in the `.plt` dump above. The after-value lands inside `libmath.so`'s executable mapping: it's `add` itself.
 
 One trap worth knowing (it bit this demo): `got_watch.c` is careful **never to take `&add`**. The moment a program takes a function's address, the linker must guarantee pointer equality across all objects, so it resolves that symbol eagerly through `.plt.got` and the lazy `JUMP_SLOT` you wanted to watch never exists.
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 3 — the same stub, two routes</span>
+  <span class="frame-title">fig. 3 · the same stub, two routes</span>
   <div class="diagram-body">
     <svg viewBox="0 0 680 330" role="img" aria-label="Side-by-side panels showing the first call through the PLT going via the resolver which patches the GOT slot, and every later call going straight through the patched slot">
       <defs>
@@ -534,15 +534,15 @@ One trap worth knowing (it bit this demo): `got_watch.c` is careful **never to t
   </div>
 </figure>
 
-The full static evidence — the complete PLT disassembly, the initial `.got.plt` bytes, the relocation table — is in [Appendix F](#appendix-f-loaders-relocation-mechanism). (If you'd rather drive this with gdb, use native x86-64 Linux: under Rosetta emulation `ptrace` is unavailable, which is exactly why the self-inspecting approach exists.)
+The full static evidence (the complete PLT disassembly, the initial `.got.plt` bytes, the relocation table) is in [Appendix F](#appendix-f-loaders-relocation-mechanism). (If you'd rather drive this with gdb, use native x86-64 Linux: under Rosetta emulation `ptrace` is unavailable, which is exactly why the self-inspecting approach exists.)
 
 ### 3.5 Why not just call through the GOT directly?
 
 A fair question: if calls go through a GOT slot anyway, why bother with the PLT stub at all? Why doesn't the compiler emit `call *GOT_entry` directly?
 
-It can (`-fno-plt` does roughly that — and consequently forces eager binding). The traditional PLT exists to solve the *"who called me?"* problem that lazy binding creates. If an unresolved `call *GOT_entry` landed in the resolver, the resolver would have no idea *which* symbol you wanted — `add`? `sleep`? The PLT stub's `push $0x0` is the missing ID: it pushes the relocation index so the resolver can look up exactly the right `R_X86_64_JUMP_SLOT` entry in `DT_JMPREL` and resolve precisely the intended symbol.
+It can (`-fno-plt` does roughly that, and consequently forces eager binding). The traditional PLT exists to solve the *"who called me?"* problem that lazy binding creates. If an unresolved `call *GOT_entry` landed in the resolver, the resolver would have no idea *which* symbol you wanted: `add`? `sleep`? The PLT stub's `push $0x0` is the missing ID: it pushes the relocation index so the resolver can look up exactly the right `R_X86_64_JUMP_SLOT` entry in `DT_JMPREL` and resolve precisely the intended symbol.
 
-For the record-by-record version of everything above — how `PT_DYNAMIC` maps out the string/symbol/relocation tables, how `R_X86_64_GLOB_DAT` entries for things like `__libc_start_main` get resolved, and the full transcripts — see [Appendix F](#appendix-f-loaders-relocation-mechanism).
+For the record-by-record version of everything above (how `PT_DYNAMIC` maps out the string/symbol/relocation tables, how `R_X86_64_GLOB_DAT` entries for things like `__libc_start_main` get resolved, and the full transcripts), see [Appendix F](#appendix-f-loaders-relocation-mechanism).
 
 
 ## Part IV: The Handoff (Loader → User)
@@ -554,14 +554,14 @@ The transition from the loader to your code happens in two steps.
 First, the loader runs the constructors (`.init` / `.init_array`) for all shared libraries (e.g., `libmath.so`) to ensure they are ready.
 
 **2: The application's entry (`_start`)**
-The CPU lands at a function called `_start`. This is not your code. It is a small assembly stub provided by the C runtime (`Scrt1.o` — the position-independent sibling of the classic `crt1.o`, since our binary is a PIE) that was linked into your binary at build time. Its job is to set up the stack and pass arguments (`argc`, `argv`) to the C library helper `__libc_start_main` — which runs the constructors for your executable (the loader's `_dl_init` already ran the shared libraries' constructors) and finally calls your `main`.
+The CPU lands at a function called `_start`. This is not your code. It is a small assembly stub provided by the C runtime (`Scrt1.o`, the position-independent sibling of the classic `crt1.o`, since our binary is a PIE) that was linked into your binary at build time. Its job is to set up the stack and pass arguments (`argc`, `argv`) to the C library helper `__libc_start_main`, which runs the constructors for your executable (the loader's `_dl_init` already ran the shared libraries' constructors) and finally calls your `main`.
 
 (Curious what this assembly looks like? See [Appendix G: The Assembly Handoff](#appendix-g-the-assembly-handoff-_start).)
 
-That completes the relay from fig. 0 — every leg of it has now crossed the page. Replay the whole thing, one step at a time; each caption should read as review, not news:
+That completes the relay from fig. 0: every leg of it has now crossed the page. Replay the whole thing, one step at a time; each caption should read as review, not news:
 
 <div class="frame diagram" data-loader-stepper>
-  <span class="frame-title">fig. 0b — the relay, replayed step by step</span>
+  <span class="frame-title">fig. 0b · the relay, replayed step by step</span>
   <div class="diagram-body">
     <noscript><p>This figure is interactive and needs JavaScript; fig. 0 back in the intro tells the same story statically.</p></noscript>
   </div>
@@ -592,9 +592,9 @@ root@container:/code# objdump -d main.o
   16:	e8 00 00 00 00       	call   1b <main+0x1b>
 ```
 
-Look at offset `0x16`: a `call` instruction (`e8`) whose 4-byte operand is **all zeroes** — it "calls" the next instruction, because the compiler had nothing to put there. That's the hole.
+Look at offset `0x16`: a `call` instruction (`e8`) whose 4-byte operand is **all zeroes**. It "calls" the next instruction, because the compiler had nothing to put there. That's the hole.
 
-- **Offset `0x17`:** the relocation points at the *operand*, one byte past the `e8` opcode — the exact 4 bytes the linker must patch. (There are two entries because `main` also calls `sleep`.)
+- **Offset `0x17`:** the relocation points at the *operand*, one byte past the `e8` opcode, the exact 4 bytes the linker must patch. (There are two entries because `main` also calls `sleep`.)
 - **Type `R_X86_64_PLT32`:** tells the linker: "I need a 32-bit PC-relative address to a PLT entry for symbol `add`."
 
 ### 5.1 The Hidden Startup Files
@@ -612,7 +612,7 @@ root@container:/code# gcc -v -o dynamic_app main.o -L. -lmath 2>&1 | grep collec
    -L. ... main.o -lmath ... -lc ... .../11/crtendS.o .../x86_64-linux-gnu/crtn.o
 ```
 
-Two things hide in that line. First, the startup files: since our binary is a PIE, gcc injects `Scrt1.o` (the position-independent variant of `crt1.o`; a non-PIE link would use `crt1.o` itself), plus `crti.o`/`crtn.o` and gcc's own `crtbeginS.o`/`crtendS.o`. Second — look again at the flags gcc chose without asking us: **`-pie -z now -z relro`**. That's the paper trail for both PIE-by-default (Part II) and eager-binding-by-default (Part III), sitting in one `gcc -v` invocation.
+Two things hide in that line. First, the startup files: since our binary is a PIE, gcc injects `Scrt1.o` (the position-independent variant of `crt1.o`; a non-PIE link would use `crt1.o` itself), plus `crti.o`/`crtn.o` and gcc's own `crtbeginS.o`/`crtendS.o`. Second, look again at the flags gcc chose without asking us: **`-pie -z now -z relro`**. That's the paper trail for both PIE-by-default (Part II) and eager-binding-by-default (Part III), sitting in one `gcc -v` invocation.
 
 ### 5.2 The Linker (`ld`)
 
@@ -657,12 +657,12 @@ The linker now processes this. It does not scan the machine code looking for cal
 
 For our `add` entry, the process is:
 
-1. The linker looks at the **Offset** (`0x17`). That is where the placeholder bytes sit inside `.text` — the operand of the `call` at `0x16`.
+1. The linker looks at the **Offset** (`0x17`). That is where the placeholder bytes sit inside `.text`, the operand of the `call` at `0x16`.
 2. It knows from Step 3 that `add@plt` now lives at some address in the PLT section.
-3. It computes: "how far is `add@plt` from this call site?" That distance is a 32-bit relative offset, which is what `R_X86_64_PLT32` asks for. (The addend `-4` accounts for the fact that x86 measures the offset from the *end* of the instruction — `0x17 + 4` — not from the operand itself.)
+3. It computes: "how far is `add@plt` from this call site?" That distance is a 32-bit relative offset, which is what `R_X86_64_PLT32` asks for. (The addend `-4` accounts for the fact that x86 measures the offset from the *end* of the instruction, `0x17 + 4`, not from the operand itself.)
 4. It writes that offset into the 4 bytes at position `0x17`, replacing the placeholder.
 
-You can see the patched result in the final binary: the same instruction that read `e8 00 00 00 00` in `main.o` reads `e8 dc fe ff ff` in `dynamic_app_lazy` — a PC-relative hop to `add@plt` (we saw it in Part III's disassembly).
+You can see the patched result in the final binary: the same instruction that read `e8 00 00 00 00` in `main.o` reads `e8 dc fe ff ff` in `dynamic_app_lazy`: a PC-relative hop to `add@plt` (we saw it in Part III's disassembly).
 
 Now when the CPU executes this `call` instruction at runtime, the offset points straight to `add@plt`.
 
@@ -728,9 +728,9 @@ You can see this logic in the Linux kernel source `fs/binfmt_elf.c`. When you ru
 **If `PT_INTERP` is missing (static binary):**
 - **No interpreter:** the kernel does not map `ld-linux.so` into memory.
 - **Direct entry:** instead of setting RIP to the loader's `_start`, the kernel sets it directly to the binary's entry point (`e_entry` from the ELF header).
-- **The new beginning:** execution usually begins at `_start` (from the startup object — `crt1.o` for classic static builds), which sets up the stack and calls `main`.
+- **The new beginning:** execution usually begins at `_start` (from the startup object, `crt1.o` for classic static builds), which sets up the stack and calls `main`.
 
-There is no PLT indirection into shared libraries and no loader to wait for. (One nuance for the pedantic: even fully static glibc binaries perform a small amount of startup self-fixup — `R_X86_64_IRELATIVE` relocations for IFUNC symbols like the optimized `memcpy` variants — and a *static-PIE* binary relocates itself the way `ld.so` does, with no loader involved.) To a first approximation, though: the CPU just jumps straight into your code.
+There is no PLT indirection into shared libraries and no loader to wait for. (One nuance for the pedantic: even fully static glibc binaries perform a small amount of startup self-fixup, `R_X86_64_IRELATIVE` relocations for IFUNC symbols like the optimized `memcpy` variants, and a *static-PIE* binary relocates itself the way `ld.so` does, with no loader involved.) To a first approximation, though: the CPU just jumps straight into your code.
 
 Everything we have covered so far happens before `main()` starts. But sometimes you need to load code *after* the program is already running: plugins, optional features, or hot-loaded extensions. This is what `dlopen` and `dlsym` provide. See [Appendix H: Runtime Loading (dlopen/dlsym)](#appendix-h-runtime-loading-dlopendlsym) for how the loader handles this and why it reuses much of the same machinery we have already seen.
 
@@ -765,13 +765,13 @@ Version needs section '.gnu.version_r' contains 1 entry:
   0x0020:   Name: GLIBC_2.34  Flags: none  Version: 2
 ```
 
-Read it as a contract: *"I need `libc.so.6`, and from it I need symbols at version `GLIBC_2.2.5` (that's `sleep`) and `GLIBC_2.34` (that's `__libc_start_main`)."* At link time, the linker recorded the version each symbol had in the libc it linked against — glibc 2.34 restructured its startup symbols, so anything linked against glibc ≥ 2.34 requires `__libc_start_main@GLIBC_2.34`. At load time, the loader checks `.gnu.version_r` against what the target's `libc.so.6` actually exports (`VERDEF` tables), and refuses to start if a required version is missing. The error isn't mystical — it's the loader reading a table we can read ourselves.
+Read it as a contract: *"I need `libc.so.6`, and from it I need symbols at version `GLIBC_2.2.5` (that's `sleep`) and `GLIBC_2.34` (that's `__libc_start_main`)."* At link time, the linker recorded the version each symbol had in the libc it linked against. glibc 2.34 restructured its startup symbols, so anything linked against glibc ≥ 2.34 requires `__libc_start_main@GLIBC_2.34`. At load time, the loader checks `.gnu.version_r` against what the target's `libc.so.6` actually exports (`VERDEF` tables), and refuses to start if a required version is missing. The error isn't mystical: it's the loader reading a table we can read ourselves.
 
-**The fix follows from the mechanism:** build against the *oldest* glibc you must support (build in an old container — glibc versions are backward-compatible, not forward), ship the runtime with the binary (containers), or take the loader out of the picture entirely (static linking, Part VI).
+**The fix follows from the mechanism:** build against the *oldest* glibc you must support (build in an old container, since glibc versions are backward-compatible, not forward), ship the runtime with the binary (containers), or take the loader out of the picture entirely (static linking, Part VI).
 
 ### 7.2 `cannot open shared object file`
 
-Our Makefile's history contains this bug on purpose. Watch what happens if you link the "obvious" way — naming the file directly — instead of with `-L. -lmath`:
+Our Makefile's history contains this bug on purpose. Watch what happens if you link the "obvious" way, naming the file directly, instead of with `-L. -lmath`:
 
 ```bash
 root@container:/code# gcc -o dynamic_app_broken main.c ./libmath.so -Wl,-rpath,'$ORIGIN'
@@ -785,7 +785,7 @@ root@container:/# cd / && /code/dynamic_app_broken
     cannot open shared object file: No such file or directory
 ```
 
-There's our second opening error, self-inflicted. The `DT_NEEDED` entry became the literal string `./libmath.so` — and remember the rule from Part III: **a needed name containing `/` is used as a path, and every search mechanism is skipped.** The `RUNPATH [$ORIGIN]` we carefully asked for is dead code; the binary only works when your *current directory* happens to contain the library. It ran fine in `/code` during development, then broke in production the first time someone ran it from anywhere else. Sound familiar?
+There's our second opening error, self-inflicted. The `DT_NEEDED` entry became the literal string `./libmath.so`. Remember the rule from Part III: **a needed name containing `/` is used as a path, and every search mechanism is skipped.** The `RUNPATH [$ORIGIN]` we carefully asked for is dead code; the binary only works when your *current directory* happens to contain the library. It ran fine in `/code` during development, then broke in production the first time someone ran it from anywhere else. Sound familiar?
 
 The fixed link (`-L. -lmath`) stores a bare `NEEDED [libmath.so]`, the search machinery engages, `RUNPATH` expands `$ORIGIN` to the binary's own directory, and it runs from anywhere:
 
@@ -793,7 +793,7 @@ The fixed link (`-L. -lmath`) stores a bare `NEEDED [libmath.so]`, the search ma
 root@container:/# /code/dynamic_app && echo "runs fine from /"
 ```
 
-**Triage order for this error in the wild:** `readelf -d` the binary — if `DT_NEEDED` contains a slash, you have this exact bug. If it's a bare name, run with `LD_DEBUG=libs` to watch the search and see which directories were probed (we did exactly this in Part III). Then fix it structurally — `-Wl,-rpath,'$ORIGIN'` for relocatable bundles, or `ldconfig` for system-wide installs — rather than exporting `LD_LIBRARY_PATH` in your shell profile and hoping.
+**Triage order for this error in the wild:** `readelf -d` the binary first. If `DT_NEEDED` contains a slash, you have this exact bug. If it's a bare name, run with `LD_DEBUG=libs` to watch the search and see which directories were probed (we did exactly this in Part III). Then fix it structurally (`-Wl,-rpath,'$ORIGIN'` for relocatable bundles, or `ldconfig` for system-wide installs) rather than exporting `LD_LIBRARY_PATH` in your shell profile and hoping.
 
 ---
 
@@ -811,7 +811,7 @@ root@container:/# /code/dynamic_app && echo "runs fine from /"
 
 The "simple" act of running `./app` is a relay race passing the baton between the compiler, linker, kernel, and dynamic loader. And the two errors we started with are just the baton being dropped at two specific hand-offs: a version contract the loader can't satisfy, and a library search that never ran.
 
-That follow-up now exists: [Part 2 — *howtf can a device be both present and not found?*](/blog/split-state-linking/) traces a production incident where this machinery failed at scale — two collective communication libraries in one binary, a symbol collision that silently split one library's state into two live copies, and RDMA devices that were present, registered, and "not found." The resolution pipeline we just traced is the key to that diagnosis.
+That follow-up now exists: [Part 2, *howtf can a device be both present and not found?*](/blog/split-state-linking/) traces a production incident where this machinery failed at scale: two collective communication libraries in one binary, a symbol collision that silently split one library's state into two live copies, and RDMA devices that were present, registered, and "not found." The resolution pipeline we just traced is the key to that diagnosis.
 
 
 ## Appendices
@@ -987,7 +987,7 @@ The absence of the `E` flag here is critical. It tells the Kernel: "The stack is
 
 
 
-Once the app starts running (that `sleep(60)` in `main.c` exists precisely so the process sticks around), we can read where everything actually landed. One honesty note: this capture comes from the emulated (Rosetta) container, where the kernel handed us `0x555555554000` — the canonical *no-randomization* PIE base — on every run. On native x86-64 Linux you'll see a different `0x55...` bias per run; that per-run difference is ASLR, and `load_bias` from Section 2.2 is whatever the kernel picked. The *structure* below is identical either way: each LOAD segment became a VMA at `load_bias + p_vaddr`.
+Once the app starts running (that `sleep(60)` in `main.c` exists precisely so the process sticks around), we can read where everything actually landed. One honesty note: this capture comes from the emulated (Rosetta) container, where the kernel handed us `0x555555554000` (the canonical *no-randomization* PIE base) on every run. On native x86-64 Linux you'll see a different `0x55...` bias per run; that per-run difference is ASLR, and `load_bias` from Section 2.2 is whatever the kernel picked. The *structure* below is identical either way: each LOAD segment became a VMA at `load_bias + p_vaddr`.
 
 <details>
 <summary>/proc/$pid/maps (rows for our binary, libmath, libc, ld-linux, stack)</summary>
@@ -1020,7 +1020,7 @@ ffffedd69000-ffffedd8a000 rw-p 00000000 00:00 0                          [stack]
 ```
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 4 — the finished address space (from the maps dump above)</span>
+  <span class="frame-title">fig. 4 · the finished address space (from the maps dump above)</span>
   <div class="diagram-body">
     <svg viewBox="0 0 640 360" role="img" aria-label="Vertical virtual-address map: the app's LOAD VMAs at the load bias, then libmath, libc, and ld-linux mapped higher, with the kernel-managed stack at the top">
       <g font-family="var(--font-mono)" font-size="11">
@@ -1188,10 +1188,10 @@ Dynamic section at offset 0x2da0 contains 29 entries:
 ```
 
 </details>
-5. Iterates through `DT_NEEDED` entries. In our case: `libmath.so` and `libc.so.6`, as we can see in the output. (Note the `FLAGS: BIND_NOW` in this default build — the loader will resolve everything up front, per Part III.)
+5. Iterates through `DT_NEEDED` entries. In our case: `libmath.so` and `libc.so.6`, as we can see in the output. (Note the `FLAGS: BIND_NOW` in this default build. The loader will resolve everything up front, per Part III.)
 
 
-6. For `libmath.so`, the loader runs the search order from Part III — here, `RUNPATH`'s `$ORIGIN` expands to the binary's directory and wins. It `mmap`s the library into the process, performing `libmath`'s own relocations along the way, and does the same for `libc.so.6`. (Had the stored name contained a `/` — like Part VII's broken build — it would have been used as a literal path with no search at all.)
+6. For `libmath.so`, the loader runs the search order from Part III: here, `RUNPATH`'s `$ORIGIN` expands to the binary's directory and wins. It `mmap`s the library into the process, performing `libmath`'s own relocations along the way, and does the same for `libc.so.6`. (Had the stored name contained a `/`, like Part VII's broken build, it would have been used as a literal path with no search at all.)
 
 7. Then it will move to doing relocations for your executable. First it will look at `map[RELA]` (`.rela.dyn`) section.
 
@@ -1304,7 +1304,7 @@ Relocation section '.rela.plt' at offset 0x640 contains 2 entries:
 0000000000004020  0000000600000007 R_X86_64_JUMP_SLOT     0000000000000000 sleep@GLIBC_2.2.5 + 0
 ```
 
-The PLT machinery itself (note the modern `endbr64`/`bnd` — that's CET/IBT hardening — and the `.plt.sec` split):
+The PLT machinery itself (note the modern `endbr64`/`bnd`, which is CET/IBT hardening, and the `.plt.sec` split):
 
 <details>
 <summary>objdump -d dynamic_app_lazy, .plt and .plt.sec sections</summary>
@@ -1343,7 +1343,7 @@ Disassembly of section .plt.sec:
 
 </details>
 
-And the initial contents of `.got.plt` in the file, before the loader has touched anything — the slot for `add` (vaddr `0x4018`) holds `0x1030`, the address of its own PLT push-stub:
+And the initial contents of `.got.plt` in the file, before the loader has touched anything. The slot for `add` (vaddr `0x4018`) holds `0x1030`, the address of its own PLT push-stub:
 
 ```text
 Hex dump of section '.got.plt':
@@ -1355,11 +1355,11 @@ Hex dump of section '.got.plt':
 
 So the chain at first call is exactly: `call add@plt` → `jmp *slot(0x4018)` → lands back at `0x1030` → `push $0x0` (the relocation index) → common stub at `0x1020` → `_dl_runtime_resolve`, which finds `add` in `libmath.so`, patches slot `0x4018`, and jumps there. Every later call short-circuits: `call add@plt` → `jmp *slot` → `add`.
 
-(If you want to poke this in gdb yourself, run it on native x86-64 Linux — under Rosetta emulation `ptrace` is unavailable, which is why the in-process `got_watch` approach exists.)
+(If you want to poke this in gdb yourself, run it on native x86-64 Linux: under Rosetta emulation `ptrace` is unavailable, which is why the in-process `got_watch` approach exists.)
 
 #### RELRO (RELocation Read-Only): partial vs full
 
-At the end of relocation processing the loader `mprotect`s the `GNU_RELRO` region read-only. How much protection that buys depends entirely on the binding mode — compare our two builds:
+At the end of relocation processing the loader `mprotect`s the `GNU_RELRO` region read-only. How much protection that buys depends entirely on the binding mode. Compare our two builds:
 
 ```text
 # default build (-z now, eager):
@@ -1368,9 +1368,9 @@ GNU_RELRO      0x002d90 0x0000000000003d90 0x0000000000003d90 0x000270 0x000270 
 GNU_RELRO      0x002dc8 0x0000000000003dc8 0x0000000000003dc8 0x000238 0x000238 R   0x1
 ```
 
-Both regions end at `0x4000`. In the **eager** build the `R_X86_64_JUMP_SLOT` entries live at `0x3fc8`/`0x3fd0` — *inside* the region. Everything is resolved before `main()` runs, so the loader can seal the entire GOT: **full RELRO**. In the **lazy** build the jump slots live at `0x4018`/`0x4020` — *past the end*. They must stay writable so the resolver can patch them at first call: **partial RELRO**.
+Both regions end at `0x4000`. In the **eager** build the `R_X86_64_JUMP_SLOT` entries live at `0x3fc8`/`0x3fd0`, *inside* the region. Everything is resolved before `main()` runs, so the loader can seal the entire GOT: **full RELRO**. In the **lazy** build the jump slots live at `0x4018`/`0x4020`, *past the end*. They must stay writable so the resolver can patch them at first call: **partial RELRO**.
 
-The security consequence, stated precisely: under full RELRO, a memory-corruption bug cannot overwrite GOT entries to hijack library calls, because those pages are read-only by the time user code runs. Under partial RELRO, the *data* GOT is sealed but `.got.plt` remains writable for the process's lifetime — and a writable function-pointer table that the program jumps through is the canonical GOT-overwrite target. That trade — startup latency vs a locked GOT — is exactly why hardened distros ship `-z now` by default.
+The security consequence, stated precisely: under full RELRO, a memory-corruption bug cannot overwrite GOT entries to hijack library calls, because those pages are read-only by the time user code runs. Under partial RELRO, the *data* GOT is sealed but `.got.plt` remains writable for the process's lifetime, and a writable function-pointer table that the program jumps through is the canonical GOT-overwrite target. That trade, startup latency vs a locked GOT, is exactly why hardened distros ship `-z now` by default.
 
 - Once these relocations are done, we are ready to handoff to `_start`.
 
@@ -1441,7 +1441,7 @@ void (*func)() = dlsym(handle, "run_plugin");
 func();
 ```
 
-The loader searches starting from that `link_map` — the object itself and its dependency subtree, not just the single object — and returns the memory address of `run_plugin`. From this point on, you call `func()` like any other function pointer.
+The loader searches starting from that `link_map` (the object itself and its dependency subtree, not just the single object) and returns the memory address of `run_plugin`. From this point on, you call `func()` like any other function pointer.
 
 This is conceptually how Python loads C extensions: `import numpy` eventually triggers a `dlopen` on the compiled NumPy shared object, and `dlsym` is used to find the entry points that bridge Python calls to the C implementation.
 

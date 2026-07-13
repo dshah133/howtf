@@ -65,7 +65,7 @@ const STEPS: { title: string; caption: string; actor: string }[] = [
     title: "execve(\"./dynamic_app\")",
     actor: "kernel",
     caption:
-      "The shell's child calls execve. The kernel throws away the old address space — what you see is a blank slate about to be filled from one file's program headers.",
+      "The shell's child calls execve. The kernel throws away the old address space: what you see is a blank slate about to be filled from one file's program headers.",
   },
   {
     title: "kernel maps the PT_LOADs",
@@ -77,7 +77,7 @@ const STEPS: { title: string; caption: string; actor: string }[] = [
     title: "kernel maps the interpreter",
     actor: "kernel",
     caption:
-      "PT_INTERP names /lib64/ld-linux-x86-64.so.2, so the kernel maps it too — via load_elf_interp(), not recursion — and sets the first jump to the loader's entry, not ours.",
+      "PT_INTERP names /lib64/ld-linux-x86-64.so.2, so the kernel maps it too (via load_elf_interp(), not recursion) and sets the first jump to the loader's entry, not ours.",
   },
   {
     title: "ld.so bootstraps and maps dependencies",
@@ -89,10 +89,10 @@ const STEPS: { title: string; caption: string; actor: string }[] = [
     title: "GOT filled, RELRO sealed",
     actor: "loader",
     caption:
-      "This binary is BIND_NOW (Ubuntu's default): every GOT slot is resolved up front, then the GOT's page is mprotect'd read-only — full RELRO. With -z lazy, slots would instead point back into the PLT, waiting.",
+      "This binary is BIND_NOW (Ubuntu's default): every GOT slot is resolved up front, then the GOT's page is mprotect'd read-only. Full RELRO. With -z lazy, slots would instead point back into the PLT, waiting.",
   },
   {
-    title: "jmp *AT_ENTRY — _start → main()",
+    title: "jmp *AT_ENTRY: _start → main()",
     actor: "our code",
     caption:
       "The loader jumps to our e_entry. _start hands off to __libc_start_main, constructors run, and main(5+10=15) finally executes. The relay is complete.",
@@ -242,7 +242,7 @@ export function mountLoaderStepper(root: HTMLElement): void {
     lock.style.opacity = step >= 4 ? "1" : "0";
     mainMark.style.opacity = step >= 5 ? "1" : "0";
     const s = STEPS[step];
-    capTitle.textContent = `step ${step}/${max} — ${s.title}`;
+    capTitle.textContent = `step ${step}/${max} · ${s.title}`;
     capTitle.style.color = "var(--accent)";
     caption.textContent = `[${s.actor}] ${s.caption}`;
     counter.textContent = `${step}/${max}`;

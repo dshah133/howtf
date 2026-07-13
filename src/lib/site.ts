@@ -1,7 +1,7 @@
 export const SITE = {
   title: "howtf.io",
   description:
-    "Deep dives from the bottom of the systems stack — kernel, loader, GPU, virtual machine monitor. Every story starts with a bug and the question: howtf did that happen?",
+    "Deep dives from the bottom of the systems stack: kernel, loader, GPU, virtual machine monitor. Every story starts with a bug and the question: howtf did that happen?",
   author: "Deep Shah",
   url: "https://howtf.io",
   github: "https://github.com/dshah133",
