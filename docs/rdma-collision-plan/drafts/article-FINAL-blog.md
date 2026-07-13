@@ -1,52 +1,54 @@
 # howtf can a device be both present and not found?
 
-> Publication draft. Sections 1, 2, and one beat of 6 contain bracketed ⟦Deep: …⟧ prompts — firsthand texture only Deep can supply. Everything else is finished prose over verified artifacts. Pin the torchcomms permalink and the repo URL before publishing. Figure placeholders are marked inline.
+> **Linking & Loading, Part 2.** Part 1 — *howtf does `./app` reach `main()`?* [Part 1 link] — traced the machinery: ELF, `ld.so`, symbol resolution, the PLT/GOT, relocations, interposition. This one is about what that machinery does to you when the same symbol exists twice.
+>
+> Publication draft — all firsthand sections filled. Pin the torchcomms permalink, the repo URL, and the Part 1 link before publishing. Figure placeholders are marked inline.
 
 ---
 
 ## 1. Present, and not found
 
-The failure that starts this story fits in one line: a training job died at startup because its collective-communication library said the accelerator device was not found.
+The failure that starts this story showed up the way these things do: in the logs and on the dashboards, as training jobs started crashing at startup. The line that mattered was the RDMA stack's classic no-device error — the moral equivalent of `ibv_get_device_list()` coming back empty:
 
-⟦Deep: the literal first line the job printed, and where you first saw it — a failed run, a task page, someone's ping. One or two sentences of scene.⟧
+```
+No IB devices found
+```
 
-The device was not missing. It showed up in enumeration. The driver was loaded. On the same host, in the same kind of process, NCCL could see the very RDMA devices this library claimed didn't exist.
+Paste that string into a search engine and every hit is hardware troubleshooting. Check the cable. Check the firmware. Check that the driver is loaded. Which is exactly the rabbit hole it aims you down, because everything about that error says *the machine*, and nothing about it says *the binary*.
+
+The device was not missing. It showed up in enumeration. The driver was loaded. On the same host, in the same kind of process, NCCL could see the very RDMA devices the failing library claimed didn't exist.
 
 Some context, because the shape of the build matters later. This was at Meta. The binaries were application training binaries composed by Buck, with PyTorch built in-house and statically linked — hermetic builds and fast startup are worth a great deal at that scale. Static linking at that size has its own physics: once a binary pushes past the 2 GiB relocation barrier, the composition gets carved into link groups to keep it linkable at all. Torch was one ingredient; the final artifact was each application's own training binary. And some of those binaries, depending on what they trained on, carried support for MTIA, Meta's own accelerator — provided by an in-house collective-communication library that discovers its devices through RDMA the same way NCCL does.
 
 So: two collective libraries in one process. NCCL/NCCLX for the GPUs, the in-house library for MTIA. Both walk the same device list at startup.
 
-The GPU path worked everywhere. The MTIA path worked in most binaries and failed in others — "device not found," at startup, every time. All of them built from the same torch commit. The device was present by every check anyone could run, and absent according to the one piece of code whose opinion mattered.
+The GPU path worked everywhere. The MTIA path worked in most binaries and failed in others — the same `No IB devices found`, at startup, every time. All of them built from the same torch commit. The device was present by every check anyone could run, and absent according to the one piece of code whose opinion mattered.
 
 That's the howtf. Same source. Same fleet. Same device, verifiably there. Whether a binary could see it depended on the binary.
 
 ## 2. The investigation
 
-A missing device points you at the layers that own devices, and that's where the time went first.
+The first guess, always, is hardware. That is what the error says, that is where on-call muscle memory goes, and that is where this one went. We checked the hardware: no issues, everything looked fine. We ran the basic IP and connectivity tests: passed. The device was cabled, enumerated, and reachable.
 
-⟦Deep: your actual first dead end — what got blamed first (firmware? driver? a flaky host? the accelerator itself?) and what ruled it out. Even one concrete suspect-and-acquittal makes this section yours.⟧
+Then came the observation that snapped the frame. Other binaries ran fine on the same device. Not other hosts — the same device, on the same machine, found and used happily by different binaries. Some binaries could see it, some could not, and each binary was consistent about which. That's the "wait, what is happening?" moment, and it's the hinge of this whole story: the instant the bug stops being a hardware bug and starts being a linker bug, even though nobody is saying the word "linker" yet.
 
-The checks that survived were the ones that made the problem stranger. The device enumerated — the in-house library sees the same RDMA device list NCCL sees, and NCCL, running in the same process image, found the devices fine. So the kernel was serving the device list correctly to a process that then reported it empty. The hardware and driver stack were effectively vouched for by a second, working consumer inside the same address space.
+Two more facts sharpened it. NCCL, running inside the same processes, saw the same RDMA device list and worked — so the kernel was serving the device list correctly to a process that then reported it empty, and the hardware and driver stack were vouched for by a second, working consumer inside the same address space. And every one of these binaries came from one torch commit, so whatever was different, it wasn't the code anyone had written. Working versus broken didn't track hosts and didn't track source. It tracked *binaries*. The difference had to live in the one step that distinguishes two binaries built from identical code: the link.
 
-The source was vouched for too. These binaries came from one torch commit. Whatever was different, it wasn't the code anyone had written.
+I should be honest about the stakes, because they explain the depth of the eventual dig. This was a SEV — and a recurrence of an earlier SEV that had been mitigated without ever being fully root-caused. The failure had been here before, been made to go away, and come back. Running it to ground this time meant descending through layers that don't usually share a whiteboard: how shared libraries are loaded for a binary, how Python links native extensions, and how the RDMA user-space drivers initialize. The root cause, once it surfaced, fit in a sentence: a symbol collision, from double inclusion of the same shared library.
 
-⟦Deep: how long this stayed open, roughly how many people got pulled in, and who first noticed the pattern below — the un-fakeable specifics.⟧
-
-The observation that broke it open was about the failures' distribution: working versus broken didn't track hosts, and it didn't track commits. It tracked *binaries*. A given application binary either always found the device or never did. Different binaries, same source, opposite behavior — which means the difference had to live in the one step that distinguishes two binaries built from identical code. The link.
-
-And once we looked there: the constructors had run. The dynamically linked libibverbs initialized; the in-house library's constructor ran and populated its device state. Discovery still came back empty. The state the constructor filled and the state discovery read had the same symbol names — and were not the same memory.
+Because once we looked inside those binaries, the constructors *had* run. The dynamically linked verbs stack — libibverbs, the mlx5 provider — initialized and registered its devices; the in-house library's setup ran on top of it. Discovery still came back empty. The state that initialization filled and the state discovery read had the same symbol names, and were not the same memory.
 
 ## 3. What was actually happening
 
-Two things were true at once, and they should not have been. The library's constructor had run: it had walked the device list and written the results into its table. And the discovery call, a moment later, found that table empty. Both were reaching that state through the same symbol names. They were not reaching the same state.
+Two things were true at once, and they should not have been. Initialization had run: the verbs stack had walked the device list and written the results into its tables. And the discovery call, a moment later, found those tables empty. Both were reaching that state through the same symbol names. They were not reaching the same state.
 
-A dynamically linked program is assembled from modules — the executable and the shared libraries it loads — and the loader resolves each name to exactly one definition per lookup. But "one definition per lookup" is not "one definition." If a strong, non-weak C symbol is defined in two modules, both definitions exist in the process image; which one a given reference binds to depends on where that reference lives and how its module was built. C has no one-definition rule to forbid the duplication, and the linker raises no error, because the two definitions never enter the same link: one is compiled into the executable, the other into a shared library, and a shared library's definitions do not collide at link time with the executable's.
+In Part 1 we traced how a dynamically linked program comes to life: `ld.so` maps the executable and its libraries, builds the lookup scope, and resolves every reference to exactly one definition — *per lookup*. What Part 1 never had to confront is that "one definition per lookup" is not "one definition." If a strong, non-weak C symbol is defined in two modules, both definitions exist in the process image, and which one a reference binds to depends on where that reference lives and how its module was built. No error fires, because the two definitions never enter the same link: one is compiled into the executable, the other into a shared library, and a shared library's definitions do not collide at link time with the executable's. C has no one-definition rule to make the duplication illegal, either.
 
-Who wins, then, when both copies exist? Under the default rules, the executable does. The dynamic loader searches the global scope in breadth-first load order, and the executable is always first, so any dynamically resolved reference to the duplicated name — from any module — lands on the executable's copy. This is interposition, and it is a feature, the same one that lets `LD_PRELOAD` swap in a debugging allocator. Crucially, in a default build it applies to the shared library's *own* references too: the library calls its own function through the same lookup, gets the executable's copy like everyone else, and the process stays consistent on one winner. Wasteful, but coherent.
+Who wins when both copies exist? The executable — this is Part 1's lookup-order rule doing exactly what it promised. The global scope is searched executable-first, so every dynamically resolved reference to the duplicated name lands on the executable's copy. That's interposition, the same feature that lets `LD_PRELOAD` swap in a debugging allocator. Crucially, in a default build it applies to the shared library's *own* references too: the library calls its own functions through the same lookup (the PLT indirection from Part 1), gets the executable's copy like everyone else, and the process stays consistent on one winner. Wasteful, but coherent.
 
 The failure needs one more ingredient: a library that opts out of being interposed. Build a shared library with `-Bsymbolic-functions` (or protected visibility) and its internal references are bound to its own definitions at link time, skipping the runtime lookup. Now the two copies stop agreeing. The library's constructor runs against the library's copy; every other module's references still resolve through the global scope to the executable's copy.
 
-That is what these training binaries were. The device state — and the functions that filled and read it — existed in two places: statically inside the application binary, and inside the dynamically linked library, which had been built to self-bind. Its constructor wrote *its* copy. The code that performed device discovery resolved the same names under the default rules and bound to the executable's copy, which nothing had filled. The process was split into two halves that agreed on every symbol name and disagreed on every symbol's contents.
+That is the double inclusion the root cause named. The verbs stack — the state behind libibverbs and the mlx5 provider, and the functions that fill and read it — existed twice in those binaries: one copy statically linked into the executable, one dynamically loaded. Initialization wrote one copy. Device discovery, resolving the same names under the default rules, read the other, which nothing had filled. The process was split into two halves that agreed on every symbol name and disagreed on every symbol's contents.
 
 That is the whole disease, and it deserves a name, because it has none: **split-state linking** — two live copies of one library's state in a single process, with references silently partitioned between them.
 
@@ -127,11 +129,11 @@ FIXES THAT WORK:
 
 Keep a single canonical copy. Or link the executable with `-Wl,--exclude-libs,ALL` so it stops dynamically exporting its static copy. Or rename one side's symbols with `objcopy --redefine-sym`. That last one is not hypothetical. Meta's public torchcomms repository ships a `rename_symbols.sh` that prefixes every `nccl*` symbol, with a comment saying it exists to avoid conflicting with the OSS `nccl*` bundled with PyTorch. The ecosystem shipped the rename fix years before the disease had a name.
 
-⟦Deep: one or two sentences — which fix actually shipped in your incident, and was it the principled one or the expedient one under deadline?⟧
+In the incident, both rungs got used, in the order SEV pressure dictates. The immediate mitigation was to make the in-house collective library opt-in: binaries that didn't need MTIA stopped pulling it in, and the double inclusion simply stopped happening in the common path — the bug defused by removing one of the two copies from most processes, not by fixing the collision. The principled fix came after: statically link libibverbs and libmlx5, so there is always exactly one copy of the ibv and mlx5 symbols in the image. That's the first rung above, the single canonical copy — shipped in production before the reproducer existed to validate it.
 
 ## 7. How common is this, really?
 
-If the trigger is a linker flag that leaves no trace in the binary, you can't answer "how common?" by grepping. You have to model the binding. Doing that revealed something the incident alone didn't show: split-state linking arrives by *two* routes, not one.
+One of the layers the SEV dig descended through was Python native linking — how the interpreter `dlopen`s extension modules and the libraries bundled alongside them. That detour turns out not to be a detour at all. If the trigger is a linker flag that leaves no trace in the binary, you can't answer "how common is this?" by grepping; you have to model the binding. And modeling it shows the same double inclusion that took down a training binary sitting quietly in ordinary Python ML processes — because split-state linking arrives by *two* routes, not one.
 
 **Route A — interposition capture** is the incident's shape: a duplicate strong symbol, a self-binding library, and an interposing module sharing one symbol scope. **Route B — scope partition** needs neither self-binding nor interposition. If two modules are loaded into separate local scopes — `RTLD_LOCAL`, the default for every `dlopen`, which is how Python loads extension modules — and each carries its own vendored copy of a library, then each side binds its own copy and runs its own state. Same disease, two live copies of one library's state, reached without any special flag at all.
 
@@ -154,7 +156,7 @@ Pointed at the manylinux ML-wheel ecosystem, the picture that comes back is spec
 
 **Route A's exact trigger is absent from public wheels — which is itself the finding.** `DF_SYMBOLIC` is set on zero of the 366 libraries examined, and `symsplit` predicts zero Route A splits across all eight co-load configurations tested. The trigger lives where the incident lived: in monorepo static-link builds — Buck, Bazel, symbolic-binding hardening — that you cannot download from PyPI. That inaccessibility is a good part of why the class went undiagnosed for so long. But the ingredient that *promotes* Route A is one line away in software everyone runs: `import torch` executes `ctypes.CDLL("libtorch_global_deps.so", RTLD_GLOBAL)`, lifting torch's OpenMP into the global scope. An `LD_DEBUG` probe shows the consequence directly: import faiss alone and its extension module's OpenMP references bind faiss's bundled libgomp; import torch first and every one of those traced references rebinds to torch's copy instead. Which copy of a runtime your library gets is decided by Python import order.
 
-The honest shape of the result: the preconditions are everywhere, the full Route A alignment is rare in public and lives behind corporate build systems, Route B is quietly resident in essentially every large ML process, and nothing warns at any tier. The ecosystem survives by paying a scattered tax — `KMP_DUPLICATE_LIB_OK`, auditwheel's content-hashed sonames (which *enable* coexisting copies rather than prevent them), torchcomms' `rename_symbols.sh`, conda's one-copy-per-environment discipline — four patches for one disease, none of them labeled with what they treat.
+The honest shape of the result: the preconditions are everywhere, the full Route A alignment is rare in public and lives behind corporate build systems, Route B is quietly resident in essentially every large ML process — the training binary's disease, one `import` away — and nothing warns at any tier. The ecosystem survives by paying a scattered tax — `KMP_DUPLICATE_LIB_OK`, auditwheel's content-hashed sonames (which *enable* coexisting copies rather than prevent them), torchcomms' `rename_symbols.sh`, conda's one-copy-per-environment discipline — four patches for one disease, none of them labeled with what they treat.
 
 ## 8. What should change
 
@@ -162,7 +164,7 @@ The diagnostic nobody built already has a name in the record. A `--warn-interpos
 
 That missing ignore-list mechanism is exactly what `symsplit` is. The allowlist for intentional interposers (allocators, sanitizers), the weak/versioned/hidden/symtab-only filtering, the self-binding inference — demonstrated against real binaries with a zero-false-positive record on a 788-binary sweep. The tool stands alone today; the question worth putting to the linker maintainers, and I intend to, is whether an opt-in, allowlist-first version of the check belongs in lld or ld proper.
 
-Until then, the checklist for anyone shipping large statically-or-mixed-linked binaries. If a dependency is built `-Bsymbolic` or `-Bsymbolic-functions`, and a strong C symbol it defines also exists anywhere else in your image, you have a latent split-state hazard that no default tool will flag. Scan for it. Prefer one canonical copy, or make the copies different symbols outright. And file the lesson somewhere it will be found at 2 a.m.: "device not found" can mean the device is right there, registered and waiting, in the copy of the world you didn't ask.
+Until then, the checklist for anyone shipping large statically-or-mixed-linked binaries. If a dependency is built `-Bsymbolic` or `-Bsymbolic-functions`, and a strong C symbol it defines also exists anywhere else in your image, you have a latent split-state hazard that no default tool will flag. Scan for it. Prefer one canonical copy, or make the copies different symbols outright. And file the lesson somewhere it will be found at 2 a.m.: `No IB devices found` can mean the devices are right there — enumerated, registered, waiting — in the copy of the world you didn't ask.
 
 ---
 
