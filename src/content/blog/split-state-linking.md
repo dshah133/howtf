@@ -26,11 +26,85 @@ Paste that string into a search engine and every hit is hardware troubleshooting
 
 The device was not missing. It showed up in enumeration. The driver was loaded. And the failing consumer was the last one anyone would suspect: NCCL — the most battle-tested RDMA consumer in the fleet, code nobody had touched. Inside the very same processes, a different, much newer library could see every device NCCL claimed didn't exist.
 
-Some context, because the shape of the build matters later. This was at Meta. The binaries were application training binaries composed by Buck, with PyTorch built in-house and statically linked — hermetic builds and fast startup are worth a great deal at that scale, [the exact case Part 1 made for why hyperscalers link statically](/blog/ELF-Linking-101/#61-why-hyperscalers-link-statically). "Composed by Buck" is doing real work in that sentence, and the public tooling documents the backbone of what it means. A Python training program pulls in an enormous amount of native code — torch and everything under it — and not all of it can be statically compiled into one executable, so Buck's [omnibus](https://buck.build/javadoc/com/facebook/buck/cxx/Omnibus.html) strategy does the next-best merge: statically link most of the native code "into a single giant shared library" — a `libomnibus.so` — leaving only the extensions Python imports directly as separate .so's. You pay the full static-link cost once, at build time; at runtime the binary `dlopen`s roughly one big library instead of hundreds. Meta had written down the hazard of merging back in [2018](https://engineering.fb.com/2018/01/23/android/android-native-library-merging/), in the Android sibling of this exact machinery: native-library merging "works great, as long as there are no common symbols between the libraries being merged." And the merge comes with a symbol discipline you can read in the open-source prelude: the omnibus body is linked behind a [generated version script](https://github.com/facebook/buck2/blob/main/prelude/cxx/omnibus.bzl) whose [last line is `local: *;`](https://github.com/facebook/buck2/blob/main/prelude/cxx/symbols.bzl) — every symbol merged into the blob is localized except the exact set the Python-facing roots need. What omnibus swallows, it hides.
+Some context, because the shape of the build matters later. This was at Meta. The binaries were application training binaries composed by Buck, with PyTorch built in-house and statically linked — hermetic builds and fast startup are worth a great deal at that scale, [the exact case Part 1 made for why hyperscalers link statically](/blog/ELF-Linking-101/#61-why-hyperscalers-link-statically).
 
-Then the giant blob meets a hard limit — the same wall [Part 1 hit at the end of its static-linking detour](/blog/ELF-Linking-101/#62-the-consequence-the-2-gib-relocation-barrier). On x86-64, a PC-relative reference reaches ±2 GiB — `R_X86_64_PC32` spans [-2³¹, 2³¹) — and a merged native library at training scale eventually outgrows it. The link fails with `relocation truncated to fit`, and because [GCC and Clang don't implement `-mcmodel=large` for position-independent code](https://maskray.me/blog/2023-05-14-relocation-overflow-and-code-models), the documented way out is exactly the move MaskRay's relocation-overflow survey prescribes: "partition the large monolithic executable into the main executable and a few shared objects." In buck2, that partitioning is [link groups](https://github.com/facebook/buck2/blob/main/prelude/linking/link_groups_explained.md): a `link_group_map` carves the binary's native dependency graph into multiple shared libraries, each under the limit, with per-group control over what links statically and what dynamically. But a link group is not a merge. It is a genuine shared library, wired to the binary through `DT_NEEDED`, and its boundary symbols are *exported*: the [same document](https://github.com/facebook/buck2/blob/main/prelude/linking/link_groups_explained.md) describes public nodes linked `--whole-archive` so all their symbols survive, and `--dynamic-list` entries feeding names into the main binary's dynamic symbol table so the pieces can find each other at runtime. Two answers to the same size problem, with opposite symbol postures: omnibus hides what it swallows; link groups publish what they split. (None of this machinery is gentle around torch — the public tracker has [buck2 #62](https://github.com/facebook/buck2/issues/62), libomnibus turning a symbol undefined that libtorch_cpu, libc10, and libtorch_python all keep weak.)
+"Composed by Buck" is doing real work in that sentence, and the public tooling documents the backbone of what it means. A Python training program pulls in an enormous amount of native code — torch and everything under it — and not all of it can be statically compiled into one executable, so Buck's [omnibus](https://buck.build/javadoc/com/facebook/buck/cxx/Omnibus.html) strategy does the next-best merge: statically link most of the native code "into a single giant shared library" — a `libomnibus.so` — leaving only the extensions Python imports directly as separate .so's. You pay the full static-link cost once, at build time; at runtime the binary `dlopen`s roughly one big library instead of hundreds.
 
-At the time of this story, the fleet was mid-migration between the two, application by application: some training binaries still composed as one libomnibus, others already carved into link groups. That matters here for two reasons. First, either composition sweeps the binary's native dependencies into the artifact itself — and among them, in these binaries, was the RDMA user-space stack: libibverbs and the mlx5 provider, the code that enumerates RDMA devices, bundled at build time rather than taken from the host the binary lands on. Second, the *posture* of that bundled copy — localized inside an omnibus blob, or exported from a link group — depended on which side of the migration a given binary stood: same source, same commit, different symbol posture, decided binary by binary. Hold both thoughts; the second is where "some binaries fine, some not" will find its answer. Torch was one ingredient; the final artifact was each application's own training binary. And some of those binaries, depending on what they trained on, carried support for MTIA, Meta's own accelerator — served by an in-house collective-communication library, newly enabled in the Torch backend, that discovers its devices through RDMA the same way NCCL does. It was that library that pulled the verbs stack into the composition at all.
+Meta had written down the hazard of merging back in [2018](https://engineering.fb.com/2018/01/23/android/android-native-library-merging/), in the Android sibling of this exact machinery: native-library merging "works great, as long as there are no common symbols between the libraries being merged." And the merge comes with a symbol discipline you can read in the open-source prelude: the omnibus body is linked behind a [generated version script](https://github.com/facebook/buck2/blob/main/prelude/cxx/omnibus.bzl) whose [last line is `local: *;`](https://github.com/facebook/buck2/blob/main/prelude/cxx/symbols.bzl) — every symbol merged into the blob is localized except the exact set the Python-facing roots need. What omnibus swallows, it hides.
+
+Then the giant blob meets a hard limit — the same wall [Part 1 hit at the end of its static-linking detour](/blog/ELF-Linking-101/#62-the-consequence-the-2-gib-relocation-barrier). On x86-64, a PC-relative reference reaches ±2 GiB — `R_X86_64_PC32` spans [-2³¹, 2³¹) — and a merged native library at training scale eventually outgrows it. The link fails with `relocation truncated to fit`, and because [GCC and Clang don't implement `-mcmodel=large` for position-independent code](https://maskray.me/blog/2023-05-14-relocation-overflow-and-code-models), the documented way out is exactly the move MaskRay's relocation-overflow survey prescribes: "partition the large monolithic executable into the main executable and a few shared objects."
+
+In buck2, that partitioning is [link groups](https://github.com/facebook/buck2/blob/main/prelude/linking/link_groups_explained.md): a `link_group_map` carves the binary's native dependency graph into multiple shared libraries, each under the limit, with per-group control over what links statically and what dynamically. But a link group is not a merge. It is a genuine shared library, wired to the binary through `DT_NEEDED`, and its boundary symbols are *exported*: the [same document](https://github.com/facebook/buck2/blob/main/prelude/linking/link_groups_explained.md) describes public nodes linked `--whole-archive` so all their symbols survive, and `--dynamic-list` entries feeding names into the main binary's dynamic symbol table so the pieces can find each other at runtime.
+
+Two answers to the same size problem, with opposite symbol postures: omnibus hides what it swallows; link groups publish what they split. (None of this machinery is gentle around torch — the public tracker has [buck2 #62](https://github.com/facebook/buck2/issues/62), libomnibus turning a symbol undefined that libtorch_cpu, libc10, and libtorch_python all keep weak.)
+
+<figure class="frame diagram">
+  <span class="frame-title">fig. 1 — one bundled copy, two postures</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 410" role="img" aria-label="Diagram: the same bundled verbs stack takes two postures depending on build strategy — merged into a libomnibus blob its symbols are localized by the version script and nothing reaches the process's global scope, while carved into a link group it becomes a real shared library whose symbols are exported into the global scope">
+      <defs>
+        <marker id="p2f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="p2f1m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <!-- shared origin -->
+        <rect x="200" y="30" width="320" height="46" fill="var(--sec)" opacity="0.07"/>
+        <rect x="200" y="30" width="320" height="46" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="360" y="49" text-anchor="middle" fill="var(--sec)">libibverbs + mlx5, bundled at build time</text>
+        <text x="360" y="66" text-anchor="middle" font-size="10" fill="var(--muted)">same source, same commit</text>
+        <!-- omnibus posture -->
+        <rect x="28" y="122" width="306" height="128" fill="var(--seg)" opacity="0.07"/>
+        <rect x="28" y="122" width="306" height="128" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="44" y="144" fill="var(--seg)">libomnibus.so — the merge</text>
+        <text x="44" y="160" font-size="10" fill="var(--muted)">version script ends: local: *;</text>
+        <rect x="46" y="174" width="270" height="58" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
+        <text x="58" y="197" fill="var(--sec)">verbs copy — localized</text>
+        <text x="58" y="218" font-size="10" fill="var(--muted)">hidden inside the blob</text>
+        <!-- link-group posture -->
+        <rect x="386" y="122" width="306" height="128" fill="var(--seg)" opacity="0.07"/>
+        <rect x="386" y="122" width="306" height="128" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="402" y="144" fill="var(--seg)">a link group — the split</text>
+        <text x="402" y="160" font-size="10" fill="var(--muted)">a genuine .so, wired by DT_NEEDED</text>
+        <rect x="404" y="174" width="270" height="58" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
+        <text x="416" y="197" fill="var(--sec)">verbs copy — exported</text>
+        <text x="416" y="218" font-size="10" fill="var(--muted)">default visibility, boundary published</text>
+        <!-- global scope -->
+        <rect x="28" y="312" width="664" height="52" fill="var(--ldr)" opacity="0.07"/>
+        <rect x="28" y="312" width="664" height="52" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="44" y="333" fill="var(--ldr)">the process's global dynamic scope</text>
+        <text x="181" y="352" text-anchor="middle" font-size="10" fill="var(--muted)">no verbs names here</text>
+        <text x="539" y="352" text-anchor="middle" font-size="10" fill="var(--accent)">verbs_register_driver_&lt;N&gt; · ibv_* — on offer</text>
+      </g>
+      <g stroke-width="1.5" fill="none">
+        <path d="M 300 80 C 260 96, 220 102, 190 118" stroke="var(--muted)" marker-end="url(#p2f1m)"/>
+        <path d="M 420 80 C 460 96, 500 102, 530 118" stroke="var(--muted)" marker-end="url(#p2f1m)"/>
+        <path d="M 181 254 L 181 308" stroke="var(--muted)" stroke-dasharray="4 4" marker-end="url(#p2f1m)"/>
+        <path d="M 539 254 L 539 308" stroke="var(--accent)" marker-end="url(#p2f1a)"/>
+      </g>
+      <g font-family="var(--font-display)" font-size="10">
+        <text x="193" y="284" fill="var(--muted)">exports nothing</text>
+        <text x="551" y="284" fill="var(--accent)">exports its symbols</text>
+      </g>
+      <text x="360" y="394" text-anchor="middle" font-family="var(--font-display)" font-size="11" fill="var(--accent)">same copy, opposite postures: what omnibus hides, a link group publishes</text>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--sec)"></span>the bundled verbs copy</span>
+      <span><span class="k" style="background:var(--seg)"></span>build artifact</span>
+      <span><span class="k" style="background:var(--ldr)"></span>global scope</span>
+      <span><span class="k" style="background:var(--accent)"></span>exported names</span>
+    </p>
+  </div>
+</figure>
+
+At the time of this story, the fleet was mid-migration between the two, application by application: some training binaries still composed as one libomnibus, others already carved into link groups. That matters here for two reasons. First, either composition sweeps the binary's native dependencies into the artifact itself — and among them, in these binaries, was the RDMA user-space stack: libibverbs and the mlx5 provider, the code that enumerates RDMA devices, bundled at build time rather than taken from the host the binary lands on.
+
+Second, the *posture* of that bundled copy — localized inside an omnibus blob, or exported from a link group — depended on which side of the migration a given binary stood: same source, same commit, different symbol posture, decided binary by binary. Hold both thoughts; the second is where "some binaries fine, some not" will find its answer.
+
+Torch was one ingredient; the final artifact was each application's own training binary. And some of those binaries, depending on what they trained on, carried support for MTIA, Meta's own accelerator — served by an in-house collective-communication library, newly enabled in the Torch backend, that discovers its devices through RDMA the same way NCCL does. It was that library that pulled the verbs stack into the composition at all.
 
 So: two collective libraries in one process. NCCL/NCCLX for the GPUs, the in-house library for MTIA. Both walk the same device list at startup.
 
@@ -44,9 +118,68 @@ The first guess, always, is hardware. That is what the error says, that is where
 
 Then came the observation that snapped the frame. Other binaries ran fine on the same device. Not other hosts — the same device, on the same machine, found and used happily by different binaries. Some binaries could see it, some could not, and each binary was consistent about which. That's the "wait, what is happening?" moment, and it's the hinge of this whole story: the instant the bug stops being a hardware bug and starts being a linker bug, even though nobody is saying the word "linker" yet.
 
-Two more facts sharpened it. The in-house library, running inside the same processes, saw the full RDMA device list and worked — so the kernel was serving the device list correctly into the very address space where NCCL reported it empty, and the hardware and driver stack were vouched for by a second, working consumer a few shared libraries away. (File away one detail about how each consumer reaches the verbs stack, because it turns out to be the whole story: the in-house library was *linked* against the verbs copy bundled into the binary, while NCCL doesn't link the verbs library at all — it [dlopens the system `libibverbs` at runtime](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) and takes every entry point by `dlsym` from that handle — the after-`main()` loading machinery from [Part 1's Appendix H](/blog/ELF-Linking-101/#appendix-h-runtime-loading-dlopendlsym).) And every one of these binaries came from one torch commit, so whatever was different, it wasn't the code anyone had written. Working versus broken didn't track hosts and didn't track source. It tracked *binaries*. The difference had to live in the one step that distinguishes two binaries built from identical code: the link.
+Two more facts sharpened it. The in-house library, running inside the same processes, saw the full RDMA device list and worked — so the kernel was serving the device list correctly into the very address space where NCCL reported it empty, and the hardware and driver stack were vouched for by a second, working consumer a few shared libraries away.
 
-I should be honest about the stakes, because they explain the depth of the eventual dig. This was a SEV — and a recurrence of an earlier SEV that had been mitigated without ever being fully root-caused. The failure had been here before, been made to go away, and come back. Running it to ground this time meant descending through layers that don't usually share a whiteboard: how shared libraries are loaded for a binary, how Python links native extensions, and how the RDMA user-space drivers initialize. The root cause, once it surfaced, fit in a sentence: a symbol collision, from double inclusion of the same shared library.
+(File away one detail about how each consumer reaches the verbs stack, because it turns out to be the whole story: the in-house library was *linked* against the verbs copy bundled into the binary, while NCCL doesn't link the verbs library at all — it [dlopens the system `libibverbs` at runtime](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) and takes every entry point by `dlsym` from that handle — the after-`main()` loading machinery from [Part 1's Appendix H](/blog/ELF-Linking-101/#appendix-h-runtime-loading-dlopendlsym).)
+
+And every one of these binaries came from one torch commit, so whatever was different, it wasn't the code anyone had written. Working versus broken didn't track hosts and didn't track source. It tracked *binaries*. The difference had to live in the one step that distinguishes two binaries built from identical code: the link.
+
+<figure class="frame diagram">
+  <span class="frame-title">fig. 2 — the elimination ladder: everything cleared except the link</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 320" role="img" aria-label="Diagram: an elimination ladder of suspects — the hardware, the network, the host, the driver and kernel, and the source are each cleared by evidence, leaving the link as the only step that differs between binaries built from identical code">
+      <g font-family="var(--font-display)" font-size="10" fill="var(--muted)">
+        <text x="36" y="34">suspect</text>
+        <text x="220" y="34">evidence</text>
+        <text x="600" y="34">verdict</text>
+      </g>
+      <line x1="30" y1="44" x2="690" y2="44" stroke="var(--border)"/>
+      <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+        <text x="36" y="70">the hardware</text>
+        <text x="36" y="106">the network</text>
+        <text x="36" y="142">the host</text>
+        <text x="36" y="178">the driver + kernel</text>
+        <text x="36" y="214">the source</text>
+      </g>
+      <g font-family="var(--font-display)" font-size="10" fill="var(--muted)">
+        <text x="220" y="70">checked — cabled, enumerated, no issues found</text>
+        <text x="220" y="106">IP and connectivity tests pass</text>
+        <text x="220" y="142">other binaries use the same device, same machine</text>
+        <text x="220" y="178">the in-house consumer sees every device, same process</text>
+        <text x="220" y="214">every binary built from one torch commit</text>
+      </g>
+      <g font-family="var(--font-mono)" font-size="11" fill="var(--ldr)">
+        <text x="600" y="70">✓ cleared</text>
+        <text x="600" y="106">✓ cleared</text>
+        <text x="600" y="142">✓ cleared</text>
+        <text x="600" y="178">✓ cleared</text>
+        <text x="600" y="214">✓ cleared</text>
+      </g>
+      <g stroke="var(--border)">
+        <line x1="30" y1="82" x2="690" y2="82"/>
+        <line x1="30" y1="118" x2="690" y2="118"/>
+        <line x1="30" y1="154" x2="690" y2="154"/>
+        <line x1="30" y1="190" x2="690" y2="190"/>
+        <line x1="30" y1="226" x2="690" y2="226"/>
+      </g>
+      <rect x="30" y="244" width="660" height="40" fill="var(--accent)" opacity="0.1"/>
+      <rect x="30" y="244" width="660" height="40" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="36" y="269" font-family="var(--font-mono)" font-size="11" fill="var(--accent)">the link</text>
+      <text x="220" y="262" font-family="var(--font-display)" font-size="10" fill="var(--text)">the one step that distinguishes two binaries</text>
+      <text x="220" y="276" font-family="var(--font-display)" font-size="10" fill="var(--text)">built from identical code</text>
+      <text x="600" y="269" font-family="var(--font-mono)" font-size="11" fill="var(--accent)">← what's left</text>
+      <text x="360" y="308" text-anchor="middle" font-family="var(--font-display)" font-size="11" fill="var(--muted)">working vs broken tracked binaries — not hosts, not source</text>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--ldr)"></span>suspect cleared</span>
+      <span><span class="k" style="background:var(--accent)"></span>the remaining suspect</span>
+    </p>
+  </div>
+</figure>
+
+I should be honest about the stakes, because they explain the depth of the eventual dig. This was a SEV — and a recurrence of an earlier SEV that had been mitigated without ever being fully root-caused. The failure had been here before, been made to go away, and come back.
+
+Running it to ground this time meant descending through layers that don't usually share a whiteboard: how shared libraries are loaded for a binary, how Python links native extensions, and how the RDMA user-space drivers initialize. The root cause, once it surfaced, fit in a sentence: a symbol collision, from double inclusion of the same shared library.
 
 Because once we looked inside those binaries, the constructors *had* run. A verbs stack — libibverbs, the mlx5 provider — initialized and registered its devices; the in-house library discovered them and ran happily on top. NCCL's discovery, in the same process, still came back empty. The state that initialization filled and the state that NCCL's discovery read had the same symbol names, and were not the same memory.
 
@@ -54,26 +187,128 @@ Because once we looked inside those binaries, the constructors *had* run. A verb
 
 Two things were true at once, and they should not have been. Initialization had run: the verbs stack had walked the device list and written the results into its tables. And NCCL's discovery call, a moment later, found the tables it was reading empty. Both sides were using the same symbol names. They were not reaching the same state.
 
-In [Part 1](/blog/ELF-Linking-101/#part-iii-the-loader-takes-control-user-mode) we traced how a dynamically linked program comes to life: `ld.so` maps the executable and its libraries, builds the lookup scope, and resolves every reference to exactly one definition — *per lookup*. What Part 1 never had to confront is that "one definition per lookup" is not "one definition." If a strong, non-weak C symbol is defined in two modules, both definitions exist in the process image, and which one a reference binds to depends on where that reference lives and how its module was built. No error fires, because the two definitions never enter the same link: one is compiled into the executable, the other into a shared library, and a shared library's definitions do not collide at link time with the executable's. C has no one-definition rule to make the duplication illegal, either.
+In [Part 1](/blog/ELF-Linking-101/#part-iii-the-loader-takes-control-user-mode) we traced how a dynamically linked program comes to life: `ld.so` maps the executable and its libraries, builds the lookup scope, and resolves every reference to exactly one definition — *per lookup*.
 
-Who wins when both copies exist? The executable — this is Part 1's lookup-order rule doing exactly what it promised. The global scope is searched executable-first, so every dynamically resolved reference to the duplicated name lands on the executable's copy. That's interposition, the same feature that lets `LD_PRELOAD` swap in a debugging allocator. Crucially, in a default build it applies to the shared library's *own* references too: the library calls its own functions through the same lookup (the [PLT indirection from Part 1](/blog/ELF-Linking-101/#34-lazy-binding-watched-live)), gets the executable's copy like everyone else, and the process stays consistent on one winner. Wasteful, but coherent.
+What Part 1 never had to confront is that "one definition per lookup" is not "one definition." If a strong, non-weak C symbol is defined in two modules, both definitions exist in the process image, and which one a reference binds to depends on where that reference lives and how its module was built. No error fires, because the two definitions never enter the same link: one is compiled into the executable, the other into a shared library, and a shared library's definitions do not collide at link time with the executable's. C has no one-definition rule to make the duplication illegal, either.
+
+Who wins when both copies exist? The executable — this is Part 1's lookup-order rule doing exactly what it promised. The global scope is searched executable-first, so every dynamically resolved reference to the duplicated name lands on the executable's copy. That's interposition, the same feature that lets `LD_PRELOAD` swap in a debugging allocator.
+
+Crucially, in a default build it applies to the shared library's *own* references too: the library calls its own functions through the same lookup (the [PLT indirection from Part 1](/blog/ELF-Linking-101/#34-lazy-binding-watched-live)), gets the executable's copy like everyone else, and the process stays consistent on one winner. Wasteful, but coherent.
 
 The process can stop agreeing on one winner in more than one way. The cleanest trigger — the one the reproducer in section 4 uses to make the split happen on demand — is a library that opts out of being interposed. Build a shared library with `-Bsymbolic-functions` (or protected visibility) and its internal references are bound to its own definitions at link time, skipping the runtime lookup. Now the two copies stop agreeing: the library's constructor runs against the library's copy, while every other module's references still resolve through the global scope to the executable's copy.
 
-The incident reached the same split through a different door: the migration from section 1. Its double inclusion — the one the root cause named — had two copies with names and a history. Copy one arrived with the in-house collective library: enabling MTIA support pulled libibverbs and the mlx5 provider into the binary's composition. In a binary still composed as libomnibus, that copy was merged into the blob and *localized* — section 1's `local: *;` version script kept the verbs symbols out of the process's dynamic symbol tables entirely, and every verbs call the in-house library made resolved to that internal copy, end to end. (rdma-core is happy to live self-contained — a static build [compiles the dlopen loader out entirely](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/dynamic_driver.c) and pulls providers in through [`ibv_static_providers()`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/static_driver.c).) Copy two was the system's: the same stack reached at runtime through `dlopen` — how NCCL gets its verbs, deliberately [loading the system `libibverbs`](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) instead of linking it, and how that libibverbs in turn finds its hardware providers, [dlopening the driver](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/dynamic_driver.c) named in its config. Two instances, two consumers, zero contact — a hidden copy and a public copy have nothing to fight over. Every binary on that side of the migration worked.
+The incident reached the same split through a different door: the migration from section 1. Its double inclusion — the one the root cause named — had two copies with names and a history. Copy one arrived with the in-house collective library: enabling MTIA support pulled libibverbs and the mlx5 provider into the binary's composition. In a binary still composed as libomnibus, that copy was merged into the blob and *localized* — section 1's `local: *;` version script kept the verbs symbols out of the process's dynamic symbol tables entirely, and every verbs call the in-house library made resolved to that internal copy, end to end.
 
-Then a binary migrated to link groups, and the bundled verbs changed posture. Carved into a link group, libibverbs stopped being a localized region of a blob and became a genuine shared library whose symbols were exported, default visibility, into the process's global dynamic scope. Precision matters here, because the naive next sentence — "and they collided with the system copy's identical names" — is wrong in an instructive way. The system copy's names never entered the global scope: `dlopen` defaults to `RTLD_LOCAL`, which keeps a loaded library's names out of the global lookup. And neither consumer was ever confused about which instance it was calling. NCCL takes its entry points by `dlsym` on its own handle, and `dlsym` searches only that handle's little world — NCCL was pinned to the system copy, unreachable by interposition, by construction. The in-house library was equally settled the other way: its verbs references resolved through the global scope to the exported bundled copy, the only definition on offer there. Two consumers, each faithfully wired to one instance — so far, just the omnibus arrangement with the curtain open. The bug needs one more reference, one that has to *cross* between the worlds.
+(rdma-core is happy to live self-contained — a static build [compiles the dlopen loader out entirely](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/dynamic_driver.c) and pulls providers in through [`ibv_static_providers()`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/static_driver.c).)
 
-That reference lives in how rdma-core keeps its books. Every instance of libibverbs carries its own file-static state: the device list `ibv_get_device_list()` hands back lives in [a static inside `device.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/device.c), and the driver registry it is built from is [a static `driver_list` inside `init.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/init.c) — and rdma-core's [own version script](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/libibverbs.map.in) marks the machinery around them local, so each instance's discovery is welded to its own tables at link time. Providers are not handed over; they announce themselves: [libmlx5](https://github.com/linux-rdma/rdma-core/blob/master/providers/mlx5/mlx5.c) runs an ELF constructor — the [`PROVIDER_DRIVER` macro](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/driver.h) — that calls `verbs_register_driver_<N>()` (rdma-core bakes its private-ABI number into the symbol name itself) to append the mlx5 driver to a registry. But *which* registry is not the loading instance's choice to make. The constructor's call is a plain extern function call — not a function pointer, not a `dlsym` — an undefined import that the dynamic linker resolves against the global scope *first* and the dlopen's own dependency scope second; the provider's `DT_NEEDED` on `libibverbs.so.1` decides what gets loaded beside it ([Part 1's dependency-discovery step](/blog/ELF-Linking-101/#32-dependency-discovery)), not who wins the lookup, and `RTLD_DEEPBIND`, the one switch that flips the order, is nowhere in this stack. The global scope now offered the bundled copy's exported definition. So every registration in the process — the bundled provider's, the system provider's that the system libibverbs dlopened for NCCL, whichever fired first — resolved to the bundled copy and filled the *bundled* registry. Interposition, doing exactly what Part 1 promised, to the one call that crossed the boundary. The system copy — the instance NCCL was pinned to, sitting right there as the provider's own `DT_NEEDED` dependency — kept a registry that no constructor could ever reach.
+Copy two was the system's: the same stack reached at runtime through `dlopen` — how NCCL gets its verbs, deliberately [loading the system `libibverbs`](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) instead of linking it, and how that libibverbs in turn finds its hardware providers, [dlopening the driver](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/dynamic_driver.c) named in its config. Two instances, two consumers, zero contact — a hidden copy and a public copy have nothing to fight over. Every binary on that side of the migration worked.
 
-Discovery then walks sysfs and matches what the kernel reports against its *own* instance's registry, and a device that matches no registered driver is silently dropped from the result (the warning that would have named the problem hides behind an `IBV_SHOW_WARNINGS` environment variable). Run the two consumers side by side. The in-house library reads the bundled instance: the registrations landed there, every device matches, MTIA trains. NCCL reads the system instance: registry empty, every device the kernel reported matches no driver, zero devices. `No IB devices found` — from the fleet's most trusted RDMA consumer, on a machine where the library that had smuggled the second copy in could see them all. Note what the mechanism does *not* depend on: load order. Whichever consumer initializes first, the registration import binds by scope, not by caller — which is why every binary was consistent about failing, every time. And that is section 1's riddle solved: same commit, opposite behavior, because binaries still on omnibus carried a hidden copy that captured nothing, and binaries on link groups carried an exported copy that captured every registration. Whether NCCL could see the hardware depended on which side of a build-system migration its binary stood. (The dlopen road is also a preview — it is exactly the runtime-scope machinery that returns in section 7 as Route B.)
+Then a binary migrated to link groups, and the bundled verbs changed posture. Carved into a link group, libibverbs stopped being a localized region of a blob and became a genuine shared library whose symbols were exported, default visibility, into the process's global dynamic scope.
 
-(Honesty about the edge of my recall, and the preconditions this account stands on. I'm reconstructing from memory, without the internal diffs; what I have is the before, the after, the migration between them, and the public sources — glibc's lookup rules, rdma-core's layout, NCCL's loader — and this is the binding topology consistent with all of them at once. Two things must have been true for the capture to happen. The copies must agree on rdma-core's private ABI number, because that number lives inside the registration symbol's name — copies that disagree define *different* symbols and cannot collide there at all. And the bundled definition had to be visible where the resolver looked, which symbol versioning — [the version contract Part 1 read out of `.gnu.version_r`](/blog/ELF-Linking-101/#71-version-glibc_234-not-found) — does not prevent: glibc accepts an exact version match, and accepts an unversioned definition for a versioned reference outright — the comment in [`check_match`](https://github.com/bminor/glibc/blob/master/elf/dl-lookup.c) reads, of all things, "This can happen during symbol interposition." A candidate is skipped only when its version tags actively mismatch. Same rdma-core lineage, same number, exported names: the capture follows.)
+Precision matters here, because the naive next sentence — "and they collided with the system copy's identical names" — is wrong in an instructive way. The system copy's names never entered the global scope: `dlopen` defaults to `RTLD_LOCAL`, which keeps a loaded library's names out of the global lookup.
+
+And neither consumer was ever confused about which instance it was calling. NCCL takes its entry points by `dlsym` on its own handle, and `dlsym` searches only that handle's little world — NCCL was pinned to the system copy, unreachable by interposition, by construction. The in-house library was equally settled the other way: its verbs references resolved through the global scope to the exported bundled copy, the only definition on offer there. Two consumers, each faithfully wired to one instance — so far, just the omnibus arrangement with the curtain open. The bug needs one more reference, one that has to *cross* between the worlds.
+
+That reference lives in how rdma-core keeps its books. Every instance of libibverbs carries its own file-static state: the device list `ibv_get_device_list()` hands back lives in [a static inside `device.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/device.c), and the driver registry it is built from is [a static `driver_list` inside `init.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/init.c) — and rdma-core's [own version script](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/libibverbs.map.in) marks the machinery around them local, so each instance's discovery is welded to its own tables at link time.
+
+Providers are not handed over; they announce themselves: [libmlx5](https://github.com/linux-rdma/rdma-core/blob/master/providers/mlx5/mlx5.c) runs an ELF constructor — the [`PROVIDER_DRIVER` macro](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/driver.h) — that calls `verbs_register_driver_<N>()` (rdma-core bakes its private-ABI number into the symbol name itself) to append the mlx5 driver to a registry. But *which* registry is not the loading instance's choice to make.
+
+The constructor's call is a plain extern function call — not a function pointer, not a `dlsym` — an undefined import that the dynamic linker resolves against the global scope *first* and the dlopen's own dependency scope second; the provider's `DT_NEEDED` on `libibverbs.so.1` decides what gets loaded beside it ([Part 1's dependency-discovery step](/blog/ELF-Linking-101/#32-dependency-discovery)), not who wins the lookup, and `RTLD_DEEPBIND`, the one switch that flips the order, is nowhere in this stack. The global scope now offered the bundled copy's exported definition.
+
+So every registration in the process — the bundled provider's, the system provider's that the system libibverbs dlopened for NCCL, whichever fired first — resolved to the bundled copy and filled the *bundled* registry. Interposition, doing exactly what Part 1 promised, to the one call that crossed the boundary. The system copy — the instance NCCL was pinned to, sitting right there as the provider's own `DT_NEEDED` dependency — kept a registry that no constructor could ever reach.
+
+Discovery then walks sysfs and matches what the kernel reports against its *own* instance's registry, and a device that matches no registered driver is silently dropped from the result (the warning that would have named the problem hides behind an `IBV_SHOW_WARNINGS` environment variable).
+
+Run the two consumers side by side. The in-house library reads the bundled instance: the registrations landed there, every device matches, MTIA trains. NCCL reads the system instance: registry empty, every device the kernel reported matches no driver, zero devices. `No IB devices found` — from the fleet's most trusted RDMA consumer, on a machine where the library that had smuggled the second copy in could see them all.
+
+Note what the mechanism does *not* depend on: load order. Whichever consumer initializes first, the registration import binds by scope, not by caller — which is why every binary was consistent about failing, every time.
+
+And that is section 1's riddle solved: same commit, opposite behavior, because binaries still on omnibus carried a hidden copy that captured nothing, and binaries on link groups carried an exported copy that captured every registration. Whether NCCL could see the hardware depended on which side of a build-system migration its binary stood. (The dlopen road is also a preview — it is exactly the runtime-scope machinery that returns in section 7 as Route B.)
+
+<figure class="frame diagram">
+  <span class="frame-title">fig. 3 — the two rails: every registration ran left, NCCL read right</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 410" role="img" aria-label="Diagram of the incident topology: two live copies of libibverbs — the bundled copy A exported from a link group, and the system copy B dlopened RTLD_LOCAL. Both mlx5 provider constructors' registration imports resolve through the global scope into copy A's registry, including the system provider's, which is captured. NCCL is dlsym-pinned to copy B, whose registry stays empty, so it finds zero devices, while the in-house library reads copy A and sees both.">
+      <defs>
+        <marker id="p2f3w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ldr)"/>
+        </marker>
+        <marker id="p2f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="p2f3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--sec)"/>
+        </marker>
+        <marker id="p2f3s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--seg)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <!-- copy A -->
+        <rect x="28" y="36" width="320" height="118" fill="var(--sec)" opacity="0.07"/>
+        <rect x="28" y="36" width="320" height="118" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="44" y="58" fill="var(--sec)">bundled libibverbs — copy A</text>
+        <text x="44" y="74" font-size="10" fill="var(--muted)">link group: exported into the global scope</text>
+        <rect x="46" y="88" width="284" height="52" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
+        <text x="58" y="109" fill="var(--sec)">driver registry</text>
+        <text x="58" y="128" font-size="10" fill="var(--ldr)">mlx5 registered — every write landed here</text>
+        <!-- copy B -->
+        <rect x="392" y="36" width="300" height="118" fill="var(--seg)" opacity="0.07"/>
+        <rect x="392" y="36" width="300" height="118" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="408" y="58" fill="var(--seg)">system libibverbs — copy B</text>
+        <text x="408" y="74" font-size="10" fill="var(--muted)">dlopen'd RTLD_LOCAL: names stay private</text>
+        <rect x="410" y="88" width="264" height="52" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
+        <text x="422" y="109" fill="var(--seg)">driver registry</text>
+        <text x="422" y="128" font-size="10" fill="var(--muted)">empty — no constructor could reach it</text>
+        <!-- actors -->
+        <rect x="24" y="300" width="152" height="56" fill="var(--sec)" opacity="0.14"/>
+        <rect x="24" y="300" width="152" height="56" fill="none" stroke="var(--sec)" stroke-width="1.5"/>
+        <text x="36" y="321" fill="var(--sec)">in-house lib</text>
+        <text x="36" y="338" font-size="10" fill="var(--muted)">linked to copy A</text>
+        <rect x="198" y="300" width="152" height="56" fill="var(--ldr)" opacity="0.14"/>
+        <rect x="198" y="300" width="152" height="56" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="210" y="321" fill="var(--ldr)">bundled mlx5 ctor</text>
+        <text x="210" y="338" font-size="10" fill="var(--muted)">verbs_register_…_&lt;N&gt;</text>
+        <rect x="372" y="300" width="152" height="56" fill="var(--ldr)" opacity="0.14"/>
+        <rect x="372" y="300" width="152" height="56" fill="none" stroke="var(--ldr)" stroke-width="1.5"/>
+        <text x="384" y="321" fill="var(--ldr)">system mlx5 ctor</text>
+        <text x="384" y="338" font-size="10" fill="var(--muted)">dlopened by copy B</text>
+        <rect x="546" y="300" width="150" height="56" fill="var(--seg)" opacity="0.14"/>
+        <rect x="546" y="300" width="150" height="56" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="558" y="321" fill="var(--seg)">NCCL</text>
+        <text x="558" y="338" font-size="10" fill="var(--muted)">dlsym on B's handle</text>
+      </g>
+      <g stroke-width="1.5" fill="none">
+        <path d="M 100 296 L 100 158" stroke="var(--sec)" marker-end="url(#p2f3r)"/>
+        <path d="M 274 296 L 274 158" stroke="var(--ldr)" marker-end="url(#p2f3w)"/>
+        <path d="M 448 296 C 448 230, 330 220, 322 158" stroke="var(--accent)" marker-end="url(#p2f3a)"/>
+        <path d="M 621 296 L 621 158" stroke="var(--seg)" marker-end="url(#p2f3s)"/>
+      </g>
+      <g font-family="var(--font-display)" font-size="10">
+        <text x="108" y="248" fill="var(--sec)">reads A — 2 devices ✓</text>
+        <text x="282" y="212" fill="var(--ldr)">registers</text>
+        <text x="440" y="252" fill="var(--accent)">captured — global scope first</text>
+        <text x="613" y="212" text-anchor="end" fill="var(--seg)">reads B — 0 devices</text>
+      </g>
+      <text x="360" y="394" text-anchor="middle" font-family="var(--font-display)" font-size="11" fill="var(--accent)">the import binds by scope, not by caller — order doesn't matter, so it failed the same way every time</text>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--sec)"></span>copy A — bundled, exported</span>
+      <span><span class="k" style="background:var(--seg)"></span>copy B — system, private</span>
+      <span><span class="k" style="background:var(--ldr)"></span>registration writes</span>
+      <span><span class="k" style="background:var(--accent)"></span>the captured import</span>
+    </p>
+  </div>
+</figure>
+
+(Honesty about the edge of my recall, and the preconditions this account stands on. I'm reconstructing from memory, without the internal diffs; what I have is the before, the after, the migration between them, and the public sources — glibc's lookup rules, rdma-core's layout, NCCL's loader — and this is the binding topology consistent with all of them at once.)
+
+(Two things must have been true for the capture to happen. The copies must agree on rdma-core's private ABI number, because that number lives inside the registration symbol's name — copies that disagree define *different* symbols and cannot collide there at all. And the bundled definition had to be visible where the resolver looked, which symbol versioning — [the version contract Part 1 read out of `.gnu.version_r`](/blog/ELF-Linking-101/#71-version-glibc_234-not-found) — does not prevent: glibc accepts an exact version match, and accepts an unversioned definition for a versioned reference outright — the comment in [`check_match`](https://github.com/bminor/glibc/blob/master/elf/dl-lookup.c) reads, of all things, "This can happen during symbol interposition." A candidate is skipped only when its version tags actively mismatch. Same rdma-core lineage, same number, exported names: the capture follows.)
 
 That is the whole disease, and it deserves a name, because it has none: **split-state linking** — two live copies of one library's state in a single process, with references silently partitioned between them.
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 1 — the two-copy split: the constructor filled one copy, discovery read the other</span>
+  <span class="frame-title">fig. 4 — the two-copy split: the constructor filled one copy, discovery read the other</span>
   <div class="diagram-body">
     <svg viewBox="0 0 720 350" role="img" aria-label="Diagram: the application binary holds a static copy of the device table which stays empty, while the shared verbs library built with -Bsymbolic-functions holds its own copy which the constructor fills with two devices; the collective library's discovery call binds across the interposition boundary to the empty executable copy">
       <defs>
@@ -157,7 +392,7 @@ The constructor registered both devices. Discovery found zero. Different address
 | **D2** | data table, global on both sides | **no split** — copy relocation quietly unifies everyone onto the executable's copy |
 
 <figure class="frame diagram">
-  <span class="frame-title">fig. 2 — the gate: a split needs all three conditions at once</span>
+  <span class="frame-title">fig. 5 — the gate: a split needs all three conditions at once</span>
   <div class="diagram-body">
     <svg viewBox="0 0 720 330" role="img" aria-label="Truth-table diagram of the six reproducer configurations: only the rows where a duplicate copy, a self-binding shared library, and an interposing executable are all present produce a split; the default build and the copy-relocated data build do not">
       <text x="360" y="26" text-anchor="middle" font-family="var(--font-display)" font-size="12" fill="var(--text)">SPLIT = duplicate copy AND self-binding .so AND interposing exe</text>
