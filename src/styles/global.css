@@ -345,6 +345,10 @@ strong {
 }
 .post-card:hover {
   border-color: var(--accent);
+  /* the card is an <a>; opt it out of the inline-link inverse-video hover
+     (a:hover fills with --accent) so the accent title stays readable on paper */
+  background: transparent;
+  color: inherit;
 }
 .post-card:hover .frame-title,
 .post-card:hover h2,

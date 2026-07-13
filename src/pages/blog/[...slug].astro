@@ -3,7 +3,6 @@ import { getCollection, render } from "astro:content";
 import type { CollectionEntry } from "astro:content";
 import Base from "../../layouts/Base.astro";
 import BacktraceToc from "../../components/BacktraceToc.astro";
-import AuthorCard from "../../components/AuthorCard.astro";
 import Subscribe from "../../components/Subscribe.astro";
 import { SITE, readingTime, seriesSlug } from "../../lib/site";
 
@@ -128,7 +127,6 @@ const jsonLd = [
           )
         }
 
-        <AuthorCard />
         <div style="margin-top:1.5rem"><Subscribe /></div>
       </article>
     </div>
