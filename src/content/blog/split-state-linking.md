@@ -480,7 +480,7 @@ The reproducer also demonstrates the part that made the production incident so d
 
 Same source, opposite behavior, decided entirely by link composition. That pair is the omnibus-to-link-groups migration in miniature: in a fleet where composition varies per application, it is precisely "some binaries fine, some not, same commit."
 
-Toolchain, for the record: gcc 13.3.0, binutils 2.42, Ubuntu 24.04, kernel 6.17-aws for the soft-RoCE variant; reproduced on both aarch64 and x86_64, and re-validated on a clean EC2 instance from the scripts alone, fresh RDMA GUIDs and all. The repo is at [the reproducer repo]. <!-- TODO(Deep): publish repo under your GitHub, then set URL -->
+Toolchain, for the record: gcc 13.3.0, binutils 2.42, Ubuntu 24.04, kernel 6.17-aws for the soft-RoCE variant; reproduced on both aarch64 and x86_64, and re-validated on a clean EC2 instance from the scripts alone, fresh RDMA GUIDs and all. The repo is at [the reproducer repo](https://github.com/dshah133/howtf/tree/v4/demo/rdma-symbol-collision). <!-- NOTE(Deep): points to dshah133/howtf@v4 (Part 1's URL pattern); resolves once demo/rdma-symbol-collision is on v4 and pushed. Confirm branch before publishing. -->
 
 ## 5. Why nothing warned
 
@@ -556,7 +556,7 @@ Until then, the checklist for anyone shipping large statically-or-mixed-linked b
 
 ---
 
-*Reproducer, scanner, and survey artifacts: [the reproducer repo]. Everything quoted above — the address matrix, the fix ladder, the sweep, the wheel survey — is a captured artifact in the repo, rerunnable from scripts.*
+*Reproducer, scanner, and survey artifacts: [the reproducer repo](https://github.com/dshah133/howtf/tree/v4/demo/rdma-symbol-collision) (scanner at [`tools/symsplit`](https://github.com/dshah133/howtf/tree/v4/tools/symsplit)). Everything quoted above — the address matrix, the fix ladder, the sweep, the wheel survey — is a captured artifact in the repo, rerunnable from scripts.*
 
-<!-- TODO(Deep): publish repo under your GitHub, then set the two "[the reproducer repo]" URLs (here and in section 4) -->
+<!-- NOTE(Deep): both artifact links point to dshah133/howtf@v4 (Part 1's pattern). They resolve once demo/rdma-symbol-collision + tools/symsplit are pushed to v4. Confirm the publish branch (Part 1 uses v4). -->
 
