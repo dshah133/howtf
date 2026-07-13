@@ -811,7 +811,7 @@ root@container:/# /code/dynamic_app && echo "runs fine from /"
 
 The "simple" act of running `./app` is a relay race passing the baton between the compiler, linker, kernel, and dynamic loader. And the two errors we started with are just the baton being dropped at two specific hand-offs: a version contract the loader can't satisfy, and a library search that never ran.
 
-In a follow-up post, we will see how this machinery can fail at scale. We will trace a production incident where two collective communication libraries were linked into the same binary, causing a symbol collision that silently redirected RDMA verb calls to the wrong device. Understanding the PLT/GOT resolution pipeline was the key to diagnosing it.
+That follow-up now exists: [Part 2 — *howtf can a device be both present and not found?*](/blog/split-state-linking/) traces a production incident where this machinery failed at scale — two collective communication libraries in one binary, a symbol collision that silently split one library's state into two live copies, and RDMA devices that were present, registered, and "not found." The resolution pipeline we just traced is the key to that diagnosis.
 
 
 ## Appendices
