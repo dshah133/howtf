@@ -19,7 +19,7 @@ or
 
 You do a frantic search, blindly paste `export LD_LIBRARY_PATH=` commands, and install random packages until the error disappears. We often treat the execution process as a black box, something that "just works" until it doesn't. These errors are symptoms of a system most engineers never look at closely, and that lack of understanding compounds when you are debugging at scale.
 
-In this post, we take a different approach. We trace the life of a command from the moment you hit `Enter` until it reaches `main()`, watching the kernel, linker, and loader coordinate to turn a file on disk into a running process. Then we flash back to build time (Parts V–VI) to see where the machinery was set up. At the end, **we reproduce both errors above on purpose and read the diagnosis straight off the binary**. Every dump in this post comes from one reproducible container; the demo and a `regenerate.sh` live [in the site repo](https://github.com/dshah133/howtf/tree/v4/demo/elf-linking).
+In this post, we take a different approach. We trace the life of a command from the moment you hit `Enter` until it reaches `main()`, watching the kernel, linker, and loader coordinate to turn a file on disk into a running process. Then we flash back to build time (Parts V–VI) to see where the machinery was set up. At the end, **we reproduce both errors above on purpose and read the diagnosis straight off the binary**. Every dump in this post comes from one reproducible container; the demo and a `regenerate.sh` live [in the site repo](https://github.com/dshah133/howtf/tree/main/demo/elf-linking).
 
 **Scope & assumptions.** This walkthrough uses **Linux on x86‑64** as the concrete reference, with the **glibc dynamic loader** (`ld-linux-x86-64.so.2`) as "the loader" we talk about. The big ideas transfer to other architectures and libcs, but some details (relocation types, syscall entry, loader internals, memory-ordering constraints etc.) might differ.
 
@@ -94,7 +94,7 @@ We will use a standard Linux environment. If you are on macOS or Windows, use Do
 > Curious how this cross-architecture magic works under the hood? See *[Appendix A](#appendix-a-the-cross-architecture-magic-rosetta--qemu)*.
 
 
-**A note on prompts:** `❯` is my host machine; `root@container:/code#` is inside the container. Every dump in this post was captured in the container described below (gcc 11.4, glibc 2.35), by [`demo/elf-linking/regenerate.sh`](https://github.com/dshah133/howtf/tree/v4/demo/elf-linking).
+**A note on prompts:** `❯` is my host machine; `root@container:/code#` is inside the container. Every dump in this post was captured in the container described below (gcc 11.4, glibc 2.35), by [`demo/elf-linking/regenerate.sh`](https://github.com/dshah133/howtf/tree/main/demo/elf-linking).
 
 **1. The Source Files**
 

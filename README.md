@@ -42,7 +42,7 @@ Demo code for the Linking & Loading series lives in `demo/elf-linking/`.
 
 ## Deploy
 
-Pushes to `v4` build and deploy to GitHub Pages via
+Pushes to `main` build and deploy to GitHub Pages via
 `.github/workflows/deploy.yaml`. OG images are generated at build time
 (`/og/...png`); RSS is full-content at `/rss.xml`.
 
