@@ -1,0 +1,20 @@
+mkdir -p build
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-soname,libbundle.so -Wl,--version-script=bundle.map -Wl,-rpath,'$ORIGIN' -o build/libbundle.so bundle.c
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-soname,libregistryB.so.1 -Wl,--version-script=registryB.map -Wl,-rpath,'$ORIGIN' -o build/libregistryB.so.1 registryB.c -ldl
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-rpath,'$ORIGIN' -o build/libproviderB.so providerB.c -Lbuild -l:libregistryB.so.1
+gcc -O0 -g -fno-lto -fPIC -Wl,-rpath,'$ORIGIN' -o build/app app.c -Lbuild -lbundle -ldl
+=== BUG: copy A exports register_driver into the global scope ===
+=== app: libbundle (copy A) is a startup DT_NEEDED dep, in the global scope ===
+
+--- dlopen("libregistryB.so.1", RTLD_LOCAL)  [acquire copy B] ---
+[registryB / copy B] ctor: dlopen(libproviderB.so) -- the provider beside me
+[providerB] ctor: register_driver(mlx5_from_providerB)  [plain extern import -> resolved by scope, not by caller]
+[bundle / copy A] register_driver(mlx5_from_providerB) -> registry A @0x73da35e88040 now holds 1 device(s)
+
+--- in-house consumer: get_device_list() -> copy A ---
+[bundle / copy A] get_device_list  <- registry A @0x73da35e88040 holds 1 device(s)
+    in-house consumer sees 1 device(s)   [OK -- reads the copy the registration landed in]
+
+--- NCCL consumer: dlvsym(hB, "get_device_list", "VERB_1.0") -> copy B ---
+[registryB / copy B] get_device_list  <- registry B @0x73da35e83060 holds 0 device(s)
+    NCCL consumer sees 0 device(s)   *** No IB devices found -- the registration went to the OTHER copy ***

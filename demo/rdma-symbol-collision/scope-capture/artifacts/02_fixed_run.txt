@@ -1,0 +1,20 @@
+mkdir -p build-fixed
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-soname,libbundle.so -Wl,--version-script=bundle-fixed.map -Wl,-rpath,'$ORIGIN' -o build-fixed/libbundle.so bundle.c
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-soname,libregistryB.so.1 -Wl,--version-script=registryB.map -Wl,-rpath,'$ORIGIN' -o build-fixed/libregistryB.so.1 registryB.c -ldl
+gcc -O0 -g -fno-lto -fPIC -shared -Wl,-rpath,'$ORIGIN' -o build-fixed/libproviderB.so providerB.c -Lbuild-fixed -l:libregistryB.so.1
+gcc -O0 -g -fno-lto -fPIC -Wl,-rpath,'$ORIGIN' -o build-fixed/app app.c -Lbuild-fixed -lbundle -ldl
+=== FIXED: copy A's register_driver localized; capture falls through to copy B ===
+=== app: libbundle (copy A) is a startup DT_NEEDED dep, in the global scope ===
+
+--- dlopen("libregistryB.so.1", RTLD_LOCAL)  [acquire copy B] ---
+[registryB / copy B] ctor: dlopen(libproviderB.so) -- the provider beside me
+[providerB] ctor: register_driver(mlx5_from_providerB)  [plain extern import -> resolved by scope, not by caller]
+[registryB / copy B] register_driver(mlx5_from_providerB) -> registry B @0x79a7f48c9060 now holds 1 device(s)
+
+--- in-house consumer: get_device_list() -> copy A ---
+[bundle / copy A] get_device_list  <- registry A @0x79a7f48ce040 holds 0 device(s)
+    in-house consumer sees 0 device(s)
+
+--- NCCL consumer: dlvsym(hB, "get_device_list", "VERB_1.0") -> copy B ---
+[registryB / copy B] get_device_list  <- registry B @0x79a7f48c9060 holds 1 device(s)
+    NCCL consumer sees 1 device(s)

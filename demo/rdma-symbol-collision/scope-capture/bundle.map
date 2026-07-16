@@ -1,0 +1,11 @@
+/* Copy A (libbundle), the BUG posture: register_driver is exported into the
+ * global scope with default visibility, so the provider's registration import
+ * is captured here. This is a link group's ordinary posture -- no
+ * -Bsymbolic-functions, no protected visibility, just a published boundary. */
+VERB_1.0 {
+  global:
+    get_device_list;
+    register_driver;
+  local:
+    *;
+};

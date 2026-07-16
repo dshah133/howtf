@@ -1,0 +1,10 @@
+## libbundle.so (copy A) dynamic symbols
+     7: 0000000000001194   148 FUNC    GLOBAL DEFAULT   15 get_device_list@@VERB_1.0
+     9: 0000000000001119   123 FUNC    GLOBAL DEFAULT   15 register_driver@@VERB_1.0
+
+## libregistryB.so.1 (copy B) dynamic symbols
+    10: 00000000000011f4   148 FUNC    GLOBAL DEFAULT   15 get_device_list@@VERB_1.0
+    12: 0000000000001179   123 FUNC    GLOBAL DEFAULT   15 register_driver@@VERB_1.0
+
+## libbundle-fixed.so: register_driver localized (absent from .dynsym)
+     8: 0000000000001194   148 FUNC    GLOBAL DEFAULT   15 get_device_list@@VERB_1.0

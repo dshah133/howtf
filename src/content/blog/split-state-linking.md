@@ -309,11 +309,39 @@ For the capture to happen at all, two preconditions had to hold: the copies must
 
 ## 4. Reproducing it
 
-A claim like that is easy to state and easy to doubt, so here is a reproducer you can run in minutes, no special hardware needed. It is a self-contained model of the mechanism, not a real RDMA stack: a small "verbs" library present in two copies (one static in the executable, one shared), a collective that performs discovery, and a couple of device names the library registers. Nothing links `libibverbs`. The point is the linker, not the hardware. `make matrix` builds the same scenario six ways and prints, for each, the address of the table the constructor wrote and the address of the table discovery read. Same address, no split. Different address, split. Whether a given build splits is a comparison of two hexadecimal numbers, not a matter of interpretation. (A second variant in the repo restages the same split on real soft-RoCE (`rdma_rxe`) devices, through `ibv_open_device`, for anyone who wants the hardware path.)
+A claim like that is easy to state and easy to doubt, so here are two reproducers you can run in minutes, no special hardware needed. The first rebuilds section 3's binding topology directly and watches the registration get captured. The second strips the mechanism down to a model and builds the split six ways, to pin down exactly which ingredients produce it.
 
-One honesty note before the output. This is the disease's skeleton, not the incident's exact topology: it triggers the split with the cleanest switch that produces it on demand (a self-binding flag) rather than restaging the incident's dlopen scoping, and section 7 comes back to that difference. What it proves is the disease itself; the incident's own door remains the reconstruction section 3 laid out.
+### The production topology, reproduced
 
-Here is the splitting configuration's actual output:
+The first lab, [`scope-capture/`](https://github.com/dshah133/howtf/tree/v4/demo/rdma-symbol-collision/scope-capture) in the repo, restages the incident's own door: the split from scope alone, no self-binding flag, no copy in the executable. Three shared libraries, all default visibility:
+
+- `libbundle.so` is copy A, a `DT_NEEDED` dependency of the app, so its `register_driver` sits in the global scope from startup.
+- `libregistryB.so.1` is copy B, the system libibverbs, `dlopen`ed `RTLD_LOCAL` so its names stay private, reached only through its own handle.
+- `libproviderB.so` is the provider. Its `DT_NEEDED` is copy B, and its constructor calls `register_driver` as a plain extern import.
+
+That constructor call is the whole incident in one line. It is an undefined import, so the loader resolves it against the global scope first and the provider's own dependency group second. Copy A is global; copy B is only in the local group. The registration lands in copy A, captured, even though copy B is the provider's own dependency sitting right beside it. `LD_DEBUG=bindings` says so directly:
+
+```text title="make trace: the provider's registration, captured by the global scope"
+binding file libproviderB.so to libbundle.so: normal symbol `register_driver' [VERB_1.0]
+binding file libregistryB.so.1 to libregistryB.so.1: normal symbol `get_device_list' [VERB_1.0]
+```
+
+The provider binds `register_driver` to libbundle, copy A. Copy B answers only its own `get_device_list`. Then each consumer reads where it was always going to: the in-house side, linked to copy A, sees the device; NCCL, by `dlvsym` on copy B's handle, reads copy B's empty registry.
+
+```text title="make bug: register writes copy A, dlvsym reads copy B"
+[bundle / copy A] register_driver(mlx5_from_providerB) -> registry A @0x73da35e88040 now holds 1 device(s)
+    in-house consumer sees 1 device(s)   [OK -- reads the copy the registration landed in]
+[registryB / copy B] get_device_list  <- registry B @0x73da35e83060 holds 0 device(s)
+    NCCL consumer sees 0 device(s)   *** No IB devices found -- the registration went to the OTHER copy ***
+```
+
+Two registry addresses, the write on one and the read on the other, no self-binding flag anywhere in the build. `make fixed` confirms the mechanism from the far side: localize copy A's `register_driver` so it leaves the global scope, and the provider's import falls through to copy B. Registration and discovery reunite there, and NCCL sees the device. That is also the lesson section 6's naive visibility fix misses: the copy you hide has to be the one wrongly winning the global lookup, the bundled copy A, not the system copy B.
+
+### The trigger, isolated
+
+The scope-capture lab reproduces the exact door but fixes the topology. To map the boundary, when a split happens and when it doesn't, the second lab strips out the hardware and the scope machinery and models the mechanism directly: a small "verbs" library present in two copies (one static in the executable, one shared), a collective that performs discovery, and a couple of device names the library registers. Nothing links `libibverbs`. The point is the linker, not the hardware. `make matrix` builds the same scenario six ways and prints, for each, the address of the table the constructor wrote and the address of the table discovery read. Same address, no split. Different address, split. Whether a given build splits is a comparison of two hexadecimal numbers, not a matter of interpretation. (A second variant in the repo restages this split on real soft-RoCE (`rdma_rxe`) devices, through `ibv_open_device`, for anyone who wants the hardware path.)
+
+This lab reaches the split through the cleanest switch that produces it on demand, a self-binding flag, rather than the scope-capture lab's dlopen scoping. Section 7 comes back to why that difference matters. Here is the splitting configuration's actual output:
 
 ```shellsession title="make matrix: config B, the splitting build"
 [constructor in copy=SHARED] registering rxe_train, rxe_store
@@ -539,7 +567,7 @@ Until then, the checklist for anyone shipping large statically-or-mixed-linked b
 
 ---
 
-*Reproducer, scanner, and survey artifacts: [the reproducer repo](https://github.com/dshah133/howtf/tree/v4/demo/rdma-symbol-collision) (scanner at [`tools/symsplit`](https://github.com/dshah133/howtf/tree/v4/tools/symsplit)). Everything quoted above (the address matrix, the fix ladder, the sweep, the wheel survey) is a captured artifact in the repo, rerunnable from scripts.*
+*Reproducer, scanner, and survey artifacts: [the reproducer repo](https://github.com/dshah133/howtf/tree/v4/demo/rdma-symbol-collision) (scanner at [`tools/symsplit`](https://github.com/dshah133/howtf/tree/v4/tools/symsplit)). Everything quoted above (the scope-capture bindings, the address matrix, the fix ladder, the sweep, the wheel survey) is a captured artifact in the repo, rerunnable from scripts.*
 
 <!-- NOTE(Deep): both artifact links point to dshah133/howtf@v4 (Part 1's pattern). They resolve once demo/rdma-symbol-collision + tools/symsplit are pushed to v4. Confirm the publish branch (Part 1 uses v4). -->
 
@@ -560,7 +588,7 @@ The merge comes with a symbol discipline you can read in the open-source prelude
 
 #### 2) The 2 GiB wall
 
-On x86-64 a PC-relative reference reaches ±2 GiB (`R_X86_64_PC32` spans [-2³¹, 2³¹)), and a merged native library at training scale eventually outgrows it. The link fails with `relocation truncated to fit`. [GCC and Clang don't implement `-mcmodel=large` for position-independent code](https://maskray.me/blog/2023-05-14-relocation-overflow-and-code-models), so the documented way out is the move MaskRay's relocation-overflow survey prescribes: "partition the large monolithic executable into the main executable and a few shared objects."
+On x86-64 a PC-relative reference reaches ±2 GiB (`R_X86_64_PC32` spans [-2³¹, 2³¹)), and a merged native library at training scale eventually outgrows it. The link fails with `relocation truncated to fit`. The medium and large PIC code models do exist on x86-64, but neither is a clean retrofit for an image this size: metadata like `.eh_frame` keeps 32-bit `R_X86_64_PC32` relocations even in `-mcmodel=large` output, prebuilt small-model objects carry the same limit, and large-model code costs size and speed. So the documented way out is the move [MaskRay's relocation-overflow survey](https://maskray.me/blog/2023-05-14-relocation-overflow-and-code-models) prescribes: "partition the large monolithic executable into the main executable and a few shared objects."
 
 #### 3) Link groups: the partition
 

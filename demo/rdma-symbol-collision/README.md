@@ -71,6 +71,13 @@ different toolchain is visible in the captured `artifacts/00_toolchain.txt`.
     per-binary nondeterminism, honest fix ladder, `LD_DEBUG` + address proofs.
   - **[`local/archive-order/`](local/archive-order/)** (SECONDARY) — the
     static-archive silent-misdirection bug and its fix taxonomy.
+- **[`scope-capture/`](scope-capture/)** — the **production-topology**
+  reconstruction of the incident: startup-global copy A (`DT_NEEDED`) +
+  `RTLD_LOCAL` copy B + a provider whose registration import is captured by copy A
+  through the global scope, with a consumer pinned to copy B by `dlvsym`. No
+  `-Bsymbolic-functions`, no executable copy — the split arises from **scope
+  alone**. `LD_DEBUG` proves the provider binds `register_driver` to copy A; the
+  fix localizes copy A's registrar.
 - **[`ec2/`](ec2/)** — the real-RDMA flavor on an EC2 box: both mechanisms
   driving **real `ibv_*`** against two soft-RoCE (`rxe`) devices, so "wrong
   device" / "no device found" is literal. See `ec2/split-state/` and `ec2/src/`.

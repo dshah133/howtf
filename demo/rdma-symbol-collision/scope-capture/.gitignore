@@ -1,0 +1,3 @@
+# Disposable build trees (regenerate with `make bug` / `make evidence`).
+build/
+build-fixed/

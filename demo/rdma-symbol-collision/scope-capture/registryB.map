@@ -1,0 +1,10 @@
+/* Copy B (libregistryB, "the system libibverbs"): exports the versioned entry
+ * points NCCL reaches by dlvsym. get_device_list@@VERB_1.0 is what
+ * dlvsym(handle_B, "get_device_list", "VERB_1.0") resolves to. */
+VERB_1.0 {
+  global:
+    get_device_list;
+    register_driver;
+  local:
+    *;
+};
