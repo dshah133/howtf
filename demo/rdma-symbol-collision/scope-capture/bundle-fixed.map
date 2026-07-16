@@ -1,0 +1,15 @@
+/* Copy A (libbundle), the FIX posture: register_driver is localized, so copy A
+ * is no longer the process's global registrar. The provider's registration
+ * import now falls through to copy B (its own DT_NEEDED dependency), and
+ * registration and discovery reunite on copy B -- the copy NCCL reads.
+ *
+ * Note which side this hides. Hiding the ACCIDENTAL GLOBAL INTERPOSER (copy A)
+ * fixes the split. That is the opposite side from the -Bsymbolic-functions lab,
+ * where hiding the shared copy changes the wrong side and leaves the split in
+ * place. Visibility fixes are topology-dependent. */
+VERB_1.0 {
+  global:
+    get_device_list;
+  local:
+    *;
+};

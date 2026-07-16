@@ -1,0 +1,4 @@
+=== LD_DEBUG=bindings: which copy does the provider's register_driver bind to? ===
+binding file build/app [0] to libbundle.so [0]: normal symbol `get_device_list' [VERB_1.0]
+binding file libproviderB.so [0] to libbundle.so [0]: normal symbol `register_driver' [VERB_1.0]
+binding file libregistryB.so.1 [0] to libregistryB.so.1 [0]: normal symbol `get_device_list' [VERB_1.0]
