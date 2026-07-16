@@ -11,13 +11,14 @@ virtualization). Live at **https://howtf.io**.
 - Posts live in `src/content/blog/*.md`. Series so far: **Linking &
   Loading** — Part 1 `ELF-Linking-101.md`, Part 2 `split-state-linking.md`.
 - Reproducers/tools: `demo/`, `tools/symsplit/`. In-post artifact links
-  point to `github.com/dshah133/howtf/tree/v4/...` — keep those intact.
+  point to `github.com/dshah133/howtf/tree/main/...` — keep those intact.
 
 ## Deploy
-- Working branch: **`revamp`**. Production branch: **`v4`** (GitHub Pages
-  deploys on push to `v4`, via `.github/workflows/deploy.yaml`).
-- Ship = push `revamp`, fast-forward `v4`, push `v4`. **Never push/merge to
-  `v4` without Deep's explicit per-action approval.**
+- Single branch: **`main`** is the only branch. It is both the working branch
+  and the production branch: GitHub Pages deploys on push to `main`, via
+  `.github/workflows/deploy.yaml`.
+- Pushing `main` publishes live to howtf.io. **Confirm with Deep before any
+  push that deploys, unless he asked for that specific push.**
 - gh account for this repo: **dshah133** (personal).
 
 ## Writing style (IMPORTANT — applies to all prose on this site)
