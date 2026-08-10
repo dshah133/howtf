@@ -1,6 +1,6 @@
 ---
 title: "howtf did a four-byte buffer crash the checkpoint worker?"
-description: "A GPUDirect visibility fence registered four bytes of host memory. Forked children started segfaulting on pointers the parent could read fine. The page-granular fork rule hiding under ibv_reg_mr()."
+description: "An RDMA deep dive: a GPUDirect visibility fence registered four bytes of host memory, and forked children started segfaulting on pointers the parent could read fine. The page-granular fork rule hiding under ibv_reg_mr()."
 date: 2026-08-09
 tags: [rdma, gpudirect, linux, fork, memory]
 draft: false

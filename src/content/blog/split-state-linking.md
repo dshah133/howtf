@@ -1,6 +1,6 @@
 ---
 title: "howtf can a device be both present and not found?"
-description: "A recurring production SEV, a device that was present and not found, and the decades-old linker rule that split one library's state into two. Part 2 of Linking & Loading."
+description: "A recurring production SEV, an RDMA device that was present and not found, and the decades-old linker rule that split one library's state into two. An InfiniBand deep dive from the linker's side. Part 2 of Linking & Loading."
 date: 2026-07-13
 series:
   name: "Linking & Loading"

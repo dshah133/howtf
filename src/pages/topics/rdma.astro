@@ -1,0 +1,38 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import PostCard from "../../components/PostCard.astro";
+import { SITE } from "../../lib/site";
+
+const posts = (
+  await getCollection("blog", ({ data }) => !data.draft && data.tags.includes("rdma"))
+).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+---
+
+<Base
+  title={`RDMA deep dives · ${SITE.title}`}
+  description="RDMA deep dives: production war stories from the RDMA and InfiniBand stack — libibverbs, GPUDirect, NCCL, memory registration, and the Linux kernel underneath them."
+  canonical="/topics/rdma/"
+  current="blog"
+>
+  <main class="shell">
+    <div class="home-center archive">
+      <div>
+        <h1>// RDMA deep dives</h1>
+        <p>
+          Production war stories from the RDMA and InfiniBand stack: libibverbs,
+          GPUDirect, NCCL, memory registration, and the kernel machinery under
+          them. Every post reconstructs a real failure end to end, checks the
+          mechanism against public source, and ships a runnable reproducer.
+        </p>
+        <ul>
+          {posts.map((post) => (
+            <li>
+              <PostCard post={post} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </main>
+</Base>

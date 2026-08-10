@@ -1,0 +1,32 @@
+# howtf.io
+
+> Systems-engineering deep dives by Deep Shah. Every post reconstructs a real
+> production failure from the bottom of the stack (linkers, loaders, RDMA,
+> GPUDirect, Linux memory management), verifies the mechanism against public
+> source with pinned commits, and ships a runnable reproducer.
+
+Topics: RDMA, InfiniBand, libibverbs, GPUDirect, NCCL, ELF, linkers, dynamic
+loading, Linux kernel, fork(), memory registration, GPU training
+infrastructure, production debugging.
+
+## Posts
+
+- [howtf does ./app reach main()?](https://howtf.io/blog/ELF-Linking-101/):
+  the life of a command from execve to main(), through the kernel, ld.so, and
+  the PLT/GOT. Linking & Loading, Part 1.
+- [howtf can a device be both present and not found?](https://howtf.io/blog/split-state-linking/):
+  an RDMA device visible to one library and invisible to another in the same
+  process. Names the failure class "split-state linking". Linking & Loading,
+  Part 2.
+- [howtf did a four-byte buffer crash the checkpoint worker?](https://howtf.io/blog/four-bytes-one-page/):
+  a GPUDirect RDMA visibility fence, ibv_fork_init's MADV_DONTFORK page
+  rounding, and fork children segfaulting on memory the parent could read.
+
+## Topic hubs
+
+- [RDMA deep dives](https://howtf.io/topics/rdma/): all RDMA/InfiniBand posts.
+
+## Reproducers
+
+- [Demo code](https://github.com/dshah133/howtf/tree/main/demo): container-based
+  reproducers for every post (MIT licensed).

@@ -41,6 +41,7 @@ const jsonLd = [
     "@type": "BlogPosting",
     headline: title,
     description,
+    ...(post.data.tags.length ? { keywords: post.data.tags.join(", ") } : {}),
     datePublished: date.toISOString(),
     ...(updated ? { dateModified: updated.toISOString() } : {}),
     url: new URL(`/blog/${post.id}/`, Astro.site).href,
