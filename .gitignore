@@ -7,3 +7,4 @@ dist
 private/
 demo/elf-linking/dynamic_app*
 demo/elf-linking/got_watch
+demo/rdma-fork-dontfork/dontfork
