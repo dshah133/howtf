@@ -22,6 +22,6 @@ export async function GET(context) {
       // full-content feed: the norm for niche technical blogs
       content: md.render(post.body ?? ""),
     })),
-    customData: `<language>en-us</language>`,
+    customData: `<language>en-us</language><copyright>© Deep Shah, all rights reserved</copyright>`,
   });
 }
