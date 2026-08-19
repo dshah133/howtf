@@ -10,6 +10,11 @@ export const SITE = {
   newsletterAction: "https://buttondown.com/api/emails/embed-subscribe/howtf",
 };
 
+// tags that have a topic hub page; tags listed here render as links on posts
+export const TOPIC_HUBS: Record<string, string> = {
+  rdma: "/topics/rdma/",
+};
+
 const WPM = 240;
 
 export function readingTime(body: string): string {

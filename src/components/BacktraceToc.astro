@@ -16,7 +16,10 @@ const items: {
 let frame = 0;
 for (const h of headings) {
   if (h.depth === 2) {
-    items.push({ slug: h.slug, text: h.text, frame: `#${frame++}`, sub: false });
+    // the frame number (#0, #1, …) already counts h2s; drop a leading
+    // "1. " from the heading text so the rail doesn't number twice
+    const text = h.text.replace(/^\d+[.)]\s+/, "");
+    items.push({ slug: h.slug, text, frame: `#${frame++}`, sub: false });
   } else if (h.depth === 3) {
     items.push({ slug: h.slug, text: h.text, frame: null, sub: true });
   }
@@ -26,22 +29,36 @@ for (const h of headings) {
 {
   items.length > 0 && (
     <nav class="rail" aria-label="table of contents" data-toc>
-      <p class="rail-title">backtrace</p>
-      <ol>
-        {items.map((i) => (
-          <li class={i.sub ? "sub" : undefined}>
-            <a href={`#${i.slug}`}>
-              {i.frame && <span class="fno">{i.frame}</span>}
-              <span>{i.text}</span>
-            </a>
-          </li>
-        ))}
-      </ol>
+      <details class="rail-toc" open>
+        <summary class="rail-title">backtrace</summary>
+        <ol>
+          {items.map((i) => (
+            <li class={i.sub ? "sub" : undefined}>
+              <a href={`#${i.slug}`}>
+                {i.frame && <span class="fno">{i.frame}</span>}
+                <span>{i.text}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      </details>
     </nav>
   )
 }
 
 <script>
+  // ships open (no-JS keeps today's behavior); on mobile, collapse it so it
+  // doesn't push the post title a full screen down. Desktop stays expanded.
+  const det = document.querySelector<HTMLDetailsElement>("[data-toc] details");
+  if (det) {
+    const mq = matchMedia("(min-width: 901px)");
+    const sync = () => {
+      det.open = mq.matches;
+    };
+    mq.addEventListener("change", sync);
+    sync();
+  }
+
   // scroll-spy: highlight the frame whose heading was most recently passed
   const toc = document.querySelector("[data-toc]");
   if (toc) {

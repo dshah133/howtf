@@ -4,7 +4,7 @@ import type { CollectionEntry } from "astro:content";
 import Base from "../../layouts/Base.astro";
 import BacktraceToc from "../../components/BacktraceToc.astro";
 import Subscribe from "../../components/Subscribe.astro";
-import { SITE, readingTime, seriesSlug } from "../../lib/site";
+import { SITE, TOPIC_HUBS, fmtDate, readingTime, seriesSlug } from "../../lib/site";
 
 export async function getStaticPaths() {
   const posts = await getCollection("blog", ({ data }) => !data.draft);
@@ -75,6 +75,8 @@ const jsonLd = [
           <p class="dek">{description}</p>
           <p class="meta">
             <b>{SITE.author}</b>
+            <span>{fmtDate(date)}</span>
+            {updated && <span>updated {fmtDate(updated)}</span>}
             <span>{readingTime(post.body ?? "")}</span>
             {
               series && (
@@ -82,6 +84,15 @@ const jsonLd = [
                   {series.name} · Part {series.part}
                 </span>
               )
+            }
+            {
+              post.data.tags
+                .filter((t) => TOPIC_HUBS[t])
+                .map((t) => (
+                  <a class="chip-pill" href={TOPIC_HUBS[t]}>
+                    {t} deep dives
+                  </a>
+                ))
             }
           </p>
         </header>

@@ -1,0 +1,94 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE } from "../lib/site";
+
+// every post ships a runnable artifact; this page is the catalog.
+// hand-maintained: add an entry when a post's reproducer lands.
+const REPO = "https://github.com/dshah133/howtf/tree/main";
+
+const artifacts = [
+  {
+    kind: "scanner",
+    tag: "python · pyelftools",
+    name: "symsplit",
+    path: "tools/symsplit",
+    dek: "A binding simulator for split-state linking: scans a binary and its shared libraries for a strong symbol that exists as two live copies across the static/dynamic boundary, and reports which copy each reference actually binds to. No linker error, no crash, just a wrong answer. This finds it before production does.",
+    post: { href: "/blog/split-state-linking/", title: "howtf can a device be both present and not found?" },
+  },
+  {
+    kind: "reproducer",
+    tag: "no RDMA hardware",
+    name: "rdma-symbol-collision",
+    path: "demo/rdma-symbol-collision",
+    dek: "The split-state failure, live: the same verbs program built across the static/dynamic configurations, showing a device list going empty with no error while the devices are demonstrably present.",
+    post: { href: "/blog/split-state-linking/", title: "howtf can a device be both present and not found?" },
+  },
+  {
+    kind: "reproducer",
+    tag: "no GPUs",
+    name: "nccl-teardown-fin",
+    path: "demo/nccl-teardown-fin",
+    dek: "teardown-hang.c reduces NCCL 2.17.1's post-abort proxy service loop to its liveness-critical core: a close() on a fork-duplicated descriptor produces no peer-visible EOF, the loop spins, and the one-syscall shutdown() fix ends it.",
+    post: { href: "/blog/close-is-not-a-message/", title: "howtf did the training job hang after the training was done?" },
+  },
+  {
+    kind: "reproducer",
+    tag: "no RDMA hardware",
+    name: "rdma-fork-dontfork",
+    path: "demo/rdma-fork-dontfork",
+    dek: "dontfork.c models libibverbs' fork-safe path: ibv_reg_mr() rounds a four-byte registration out to page boundaries and marks the pages MADV_DONTFORK, so a forked child segfaults on memory the parent reads fine.",
+    post: { href: "/blog/four-bytes-one-page/", title: "howtf did a four-byte buffer crash the checkpoint worker?" },
+  },
+  {
+    kind: "lab",
+    tag: "follow along",
+    name: "elf-linking",
+    path: "demo/elf-linking",
+    dek: "The workspace behind the ELF deep dive: dynamic, static, and deliberately broken builds of one program, a GOT-watch tool to catch lazy binding live, and the capture scripts that regenerate every artifact in the post.",
+    post: { href: "/blog/ELF-Linking-101/", title: "howtf does ./app reach main()?" },
+  },
+];
+---
+
+<Base
+  title={`tools · ${SITE.title}`}
+  description="Runnable reproducers and diagnostics from howtf.io posts: split-state linking scanner, NCCL teardown-hang and RDMA fork reproducers, ELF linking lab. Each runs without special hardware."
+  canonical="/tools/"
+  current="tools"
+>
+  <main class="shell">
+    <div class="home-center archive">
+      <div>
+        <h1>// tools &amp; reproducers</h1>
+        <p class="eyebrow topics-line">
+          Every post on this site ships a runnable artifact. This is the
+          catalog: each one reproduces the failure without the original
+          hardware, so you can watch the bug happen on your own machine.
+        </p>
+        <section>
+          <ul>
+            {
+              artifacts.map((a) => (
+                <li>
+                  <div class="frame tool-card">
+                    <span class="frame-title">{a.kind}</span>
+                    <span class="frame-tag">{a.tag}</span>
+                    <h3>
+                      <a href={`${REPO}/${a.path}`}>{a.path}</a>
+                    </h3>
+                    <p class="dek">{a.dek}</p>
+                    <p class="meta">
+                      <span>
+                        from: <a href={a.post.href}>{a.post.title}</a>
+                      </span>
+                    </p>
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </section>
+      </div>
+    </div>
+  </main>
+</Base>

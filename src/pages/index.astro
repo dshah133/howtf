@@ -56,6 +56,13 @@ const jsonLd = [
             aria-hidden="true">▍</span
           >
         </h1>
+        <nav class="home-nav" aria-label="site">
+          <a href="/blog/">posts</a>
+          <a href="/series/">series</a>
+          <a href="/tools/">tools</a>
+          <a href="/about/">about</a>
+          <a href="/rss.xml">rss</a>
+        </nav>
       </header>
 
       <div class="manifesto">
@@ -80,7 +87,6 @@ const jsonLd = [
           <PostCard
             post={post}
             label={post.data.featured ? "featured session" : i === 0 ? "latest session" : "session"}
-            tag={post.data.featured || i === 0 ? "start here" : undefined}
           />
         ))
       }
