@@ -14,18 +14,51 @@ Loss curves converged, the last checkpoint landed on disk, every training-step c
 
 A hang in production is, in principle, a solved diagnostic problem: there is telemetry everywhere, you can snapshot a machine, you can trace a process. In practice the first hard question is not *why* something is hung but *who*. A single training host is a small zoo:
 
-```text title="fig. 1 · one training host, many suspects"
-  host (8 GPUs)
-  ├─ rank 0 process ─┐
-  │   ├─ main trainer thread          (Python + CUDA)
-  │   ├─ "NCCL Service  0" thread     (per-communicator proxy service)
-  │   ├─ "NCCL Progress 0" thread     (proxy/transport progress engine)
-  │   ├─ ProcessGroupNCCL watchdog    (PyTorch's timeout police)
-  │   ├─ dataloader workers           (fork()ed child processes)
-  │   └─ checkpoint / uploader helpers
-  ├─ rank 1 process ── (same shape)
-  └─ …
-```
+<figure class="frame diagram">
+  <span class="frame-title">fig. 1 · one training host, many suspects</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 330" role="img" aria-label="Diagram: a training host contains rank processes. Rank 0 holds a main trainer thread, an NCCL Service thread which is highlighted, an NCCL Progress thread, and the ProcessGroupNCCL watchdog, plus forked dataloader workers and checkpoint helper processes. Rank 1 and further ranks have the same shape.">
+      <g font-family="var(--font-mono)" font-size="11">
+        <rect x="14" y="20" width="692" height="288" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+        <text x="28" y="40" fill="var(--muted)">host · 8 GPUs</text>
+        <rect x="40" y="54" width="400" height="180" fill="var(--seg)" opacity="0.08"/>
+        <rect x="40" y="54" width="400" height="180" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="54" y="74" fill="var(--seg)">rank 0 process</text>
+        <rect x="56" y="86" width="368" height="22" fill="none" stroke="var(--muted)" stroke-width="1"/>
+        <text x="64" y="101" fill="var(--text)">main trainer thread</text>
+        <text x="416" y="101" text-anchor="end" fill="var(--muted)" font-size="10">Python + CUDA</text>
+        <rect x="56" y="114" width="368" height="22" fill="var(--accent)" opacity="0.10"/>
+        <rect x="56" y="114" width="368" height="22" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="64" y="129" fill="var(--accent)">"NCCL Service 0" thread</text>
+        <text x="416" y="129" text-anchor="end" fill="var(--muted)" font-size="10">per-communicator proxy service</text>
+        <rect x="56" y="142" width="368" height="22" fill="none" stroke="var(--muted)" stroke-width="1"/>
+        <text x="64" y="157" fill="var(--text)">"NCCL Progress 0" thread</text>
+        <text x="416" y="157" text-anchor="end" fill="var(--muted)" font-size="10">progress engine</text>
+        <rect x="56" y="170" width="368" height="22" fill="none" stroke="var(--muted)" stroke-width="1"/>
+        <text x="64" y="185" fill="var(--text)">ProcessGroupNCCL watchdog</text>
+        <text x="416" y="185" text-anchor="end" fill="var(--muted)" font-size="10">PyTorch's timeout police</text>
+        <text x="64" y="216" fill="var(--muted)" font-size="10">+ whatever the script itself is doing</text>
+        <line x1="440" y1="100" x2="470" y2="84" stroke="var(--muted)" stroke-width="1"/>
+        <line x1="440" y1="130" x2="470" y2="146" stroke="var(--muted)" stroke-width="1"/>
+        <rect x="470" y="64" width="216" height="40" fill="var(--seg)" opacity="0.08"/>
+        <rect x="470" y="64" width="216" height="40" fill="none" stroke="var(--seg)" stroke-width="1.2"/>
+        <text x="482" y="81" fill="var(--seg)">dataloader workers</text>
+        <text x="482" y="96" fill="var(--muted)" font-size="10">fork()ed child processes</text>
+        <rect x="470" y="126" width="216" height="40" fill="var(--seg)" opacity="0.08"/>
+        <rect x="470" y="126" width="216" height="40" fill="none" stroke="var(--seg)" stroke-width="1.2"/>
+        <text x="482" y="143" fill="var(--seg)">checkpoint / uploader helpers</text>
+        <text x="482" y="158" fill="var(--muted)" font-size="10">also forked children</text>
+        <rect x="40" y="248" width="400" height="30" fill="none" stroke="var(--seg)" stroke-width="1" stroke-dasharray="5 4"/>
+        <text x="54" y="267" fill="var(--muted)">rank 1 process — same shape</text>
+        <text x="54" y="298" fill="var(--muted)">… ranks 2–7, then multiply by every host</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--seg)"></span>process</span>
+      <span><span class="k" style="background:var(--accent)"></span>the thread teardown turns out to wait on</span>
+    </p>
+  </div>
+</figure>
 
 Multiply by every host. "The job is hung" ranges over hundreds of processes, most of which are *supposed* to be waiting for something. So the first real work was elimination: walk the snapshots, find the thread that should be making progress and isn't. Training threads: done. Dataloaders: idle, waiting for a next-batch request. Checkpointing: finished.
 
@@ -100,14 +133,49 @@ For the workhorse case, direct P2P between GPUs, a rank connects to **its own se
 
 Every rank that has completed `ncclCommInitRank`, whatever its data plane later turns out to be, already holds a cached, persistent TCP self-connection to its own proxy service. The transport selections above then reuse or add to it. One counted connection, guaranteed by init.
 
-```text title="fig. 2 · the minimum viable topology: one rank, one TCP self-connection"
-   rank process
-   ├─ "NCCL Service" thread ── runs the listener; holds the ACCEPTED end of the connection
-   ├─ peerSocks[self] ───────── CLIENT end, opened at communicator init (local-proxy connect), cached
-   └─ forked child (later) ──── inherits a duplicate of the client end
-
-   (kernel-local TCP; NVLink carries tensors, this carries setup & teardown)
-```
+<figure class="frame diagram">
+  <span class="frame-title">fig. 2 · the minimum viable topology: one rank, one TCP self-connection</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 308" role="img" aria-label="Diagram: inside one rank process, the NCCL Service thread holds the accepted end of a TCP connection and peerSocks[self] holds the client end, opened at communicator init. The connection loops through the kernel's TCP stack on the same host. A forked child created later inherits a duplicate of the client end.">
+      <defs>
+        <marker id="f2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--krn)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <rect x="24" y="30" width="440" height="180" fill="var(--seg)" opacity="0.08"/>
+        <rect x="24" y="30" width="440" height="180" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="38" y="50" fill="var(--seg)">rank process</text>
+        <rect x="44" y="64" width="188" height="70" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+        <text x="56" y="84" fill="var(--text)">"NCCL Service" thread</text>
+        <text x="56" y="100" fill="var(--muted)" font-size="10">runs the listener; holds</text>
+        <text x="56" y="114" fill="var(--muted)" font-size="10">the ACCEPTED end</text>
+        <rect x="280" y="64" width="164" height="70" fill="var(--accent)" opacity="0.10"/>
+        <rect x="280" y="64" width="164" height="70" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="292" y="84" fill="var(--accent)">peerSocks[self]</text>
+        <text x="292" y="100" fill="var(--muted)" font-size="10">CLIENT end · opened at</text>
+        <text x="292" y="114" fill="var(--muted)" font-size="10">comm init · cached</text>
+        <rect x="24" y="224" width="440" height="56" fill="var(--krn)" opacity="0.10"/>
+        <rect x="24" y="224" width="440" height="56" fill="none" stroke="var(--krn)" stroke-width="1.5"/>
+        <text x="38" y="270" fill="var(--krn)">kernel · one real TCP connection, host-local</text>
+        <polyline points="362,134 362,240 138,240 138,138" fill="none" stroke="var(--krn)" stroke-width="1.5" marker-end="url(#f2a)"/>
+        <rect x="500" y="64" width="196" height="86" fill="var(--seg)" opacity="0.08"/>
+        <rect x="500" y="64" width="196" height="86" fill="none" stroke="var(--seg)" stroke-width="1.2" stroke-dasharray="5 4"/>
+        <text x="512" y="84" fill="var(--seg)">forked child (later)</text>
+        <text x="512" y="102" fill="var(--muted)" font-size="10">inherits a duplicate of</text>
+        <text x="512" y="116" fill="var(--muted)" font-size="10">the client end — and will</text>
+        <text x="512" y="130" fill="var(--muted)" font-size="10">never use it</text>
+        <line x1="500" y1="99" x2="444" y2="99" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="24" y="298" fill="var(--muted)" font-size="10">NVLink carries the tensors; this connection carries setup &amp; teardown</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--seg)"></span>process</span>
+      <span><span class="k" style="background:var(--krn)"></span>kernel / TCP stack</span>
+      <span><span class="k" style="background:var(--accent)"></span>the client-end descriptor and its aliases</span>
+    </p>
+  </div>
+</figure>
 
 (One honesty note on the diagram: `fork()` copies the *whole* table — the child also inherits the accepted endpoint, the listener, and every other open NCCL descriptor. The diagram shows only the client-end alias because that is the one whose final release controls whether the service side ever sees EOF.)
 
@@ -175,17 +243,49 @@ A file descriptor is an entry in a process's fd table. It refers to an **open fi
 
 Who duplicates descriptors? [`fork()`](https://man7.org/linux/man-pages/man2/fork.2.html) copies the entire table. And the standard hygiene flag — `O_CLOEXEC`/`SOCK_CLOEXEC` — is no defense here: it closes descriptors across `exec()`, but a fork-only child (one that keeps running the parent's image, like a dataloader worker) inherits everything regardless. The 2.17.1 socket paths set no close-on-exec flags (a tree-wide grep finds no `CLOEXEC` at all), leaving these descriptors eligible to survive an `exec()` too unless the launcher explicitly closed them. But the fork-only case is the one no flag would have saved.
 
-```text title="fig. 3 · one socket, two fd tables, one gate on the wire event"
-   rank process                       forked helper
-   fd 23 ─────────────┐               fd 23 ────────────┐
-                      ▼                                 ▼
-             ┌──────────────────────────────────────────────┐
-             │  open file description · 2 descriptor aliases │
-             │  TCP: client end ⇄ the service thread's end   │
-             └──────────────────────────────────────────────┘
-   rank: close(23)  →  aliases 2 → 1  →  ESTABLISHED. no wire event.
-   helper exits     →  aliases 1 → 0  →  NOW the close-processing runs.
-```
+<figure class="frame diagram">
+  <span class="frame-title">fig. 3 · one socket, two fd tables, one gate on the wire event</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 320" role="img" aria-label="Diagram: the rank process and a forked helper each hold fd 23. Both descriptors point at one shared open file description in the kernel, which refers to the TCP socket. When the rank closes fd 23 the alias count drops from two to one and the connection stays ESTABLISHED with no wire event. Only when the helper exits does the count reach zero and the close-processing run.">
+      <defs>
+        <marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+        </marker>
+        <marker id="f3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--krn)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <rect x="60" y="30" width="230" height="54" fill="var(--seg)" opacity="0.08"/>
+        <rect x="60" y="30" width="230" height="54" fill="none" stroke="var(--seg)" stroke-width="1.5"/>
+        <text x="74" y="50" fill="var(--seg)">rank process</text>
+        <text x="74" y="68" fill="var(--text)">fd 23</text>
+        <rect x="430" y="30" width="230" height="54" fill="var(--seg)" opacity="0.08"/>
+        <rect x="430" y="30" width="230" height="54" fill="none" stroke="var(--seg)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="444" y="50" fill="var(--seg)">forked helper</text>
+        <text x="444" y="68" fill="var(--text)">fd 23 — the fork()ed duplicate</text>
+        <rect x="40" y="120" width="640" height="112" fill="var(--krn)" opacity="0.07"/>
+        <rect x="40" y="120" width="640" height="112" fill="none" stroke="var(--krn)" stroke-width="1.5"/>
+        <text x="54" y="140" fill="var(--krn)">kernel</text>
+        <rect x="170" y="150" width="380" height="30" fill="var(--krn)" opacity="0.12"/>
+        <rect x="170" y="150" width="380" height="30" fill="none" stroke="var(--krn)" stroke-width="1.4"/>
+        <text x="360" y="169" text-anchor="middle" fill="var(--text)">open file description · descriptor aliases: 2</text>
+        <line x1="150" y1="84" x2="300" y2="148" stroke="var(--muted)" stroke-width="1.3" marker-end="url(#f3a)"/>
+        <line x1="545" y1="84" x2="430" y2="148" stroke="var(--muted)" stroke-width="1.3" marker-end="url(#f3a)"/>
+        <line x1="360" y1="180" x2="360" y2="192" stroke="var(--krn)" stroke-width="1.3" marker-end="url(#f3b)"/>
+        <rect x="250" y="194" width="220" height="26" fill="none" stroke="var(--krn)" stroke-width="1.2"/>
+        <text x="360" y="211" text-anchor="middle" fill="var(--krn)">TCP socket · client end ⇄ svc end</text>
+        <text x="60" y="266" fill="var(--muted)">rank: close(23) → aliases 2→1 → still ESTABLISHED. no wire event.</text>
+        <text x="60" y="290" fill="var(--accent)">helper exits    → aliases 1→0 → NOW the close-processing runs.</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--seg)"></span>process fd tables</span>
+      <span><span class="k" style="background:var(--krn)"></span>kernel objects</span>
+      <span><span class="k" style="background:var(--accent)"></span>the final release, the only one TCP acts on</span>
+    </p>
+  </div>
+</figure>
 
 Does a training process fork children after that socket exists? In our era's stack, routinely — though the details are version-sensitive, so pin them:
 
@@ -216,20 +316,52 @@ That ordering line is the load-bearing one, and the layers matter: `init_process
 
 Now assemble it, in its common direct-P2P shape, which is also its strangest: **a rank deadlocking its own abort, with its own child holding the key.**
 
-```text title="fig. 4 · the self-deadlock, 2.17.1, one rank — minimal one-connection slice"
-  aborting thread (PyTorch error path)    "NCCL Service" thread (same process!)
-  ─────────────────────────               ────────────────────────────────────
-  ncclCommAbort → commReclaim             abortFlag seen → stop = 1
-    streams drained                       npeers = 1  (the self-connection)
-    ncclProxyDestroy:                     poll(500ms) … nothing
-      abortFlag != 0 → send nothing       poll(500ms) … nothing
-      close(peerSocks[self])              poll(500ms) … nothing
-        aliases 2 → 1 (helper holds one)  poll(500ms) … nothing
-        → no wire event                   npeers = 1. indefinitely.
-    commFree:
-      pthread_join(service thread) ─────► blocked until that alias
-                                            releases — potentially forever
-```
+<figure class="frame diagram">
+  <span class="frame-title">fig. 4 · the self-deadlock, 2.17.1, one rank — minimal one-connection slice</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 380" role="img" aria-label="Timeline diagram with two lanes inside one process. Left lane, the aborting thread: ncclCommAbort runs commReclaim, drains streams, ncclProxyDestroy sends nothing because the abort flag is set, closes peerSocks[self] which only drops the alias count from two to one with no wire event, then commFree blocks in pthread_join on the service thread. Right lane, the NCCL Service thread: sees the abort flag, sets stop to one, but npeers stays one, so it polls every 500 milliseconds forever. Below, the forked helper holds the deciding descriptor alias and appears in no interesting stack trace.">
+      <defs>
+        <marker id="f4a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <text x="40" y="40" fill="var(--text)">aborting thread (PyTorch error path)</text>
+        <line x1="40" y1="48" x2="330" y2="48" stroke="var(--muted)" stroke-width="1"/>
+        <text x="400" y="40" fill="var(--text)">"NCCL Service" thread (same process!)</text>
+        <line x1="400" y1="48" x2="690" y2="48" stroke="var(--muted)" stroke-width="1"/>
+        <text x="40" y="76" fill="var(--text)">ncclCommAbort → commReclaim</text>
+        <text x="56" y="100" fill="var(--text)">streams drained</text>
+        <text x="56" y="124" fill="var(--text)">ncclProxyDestroy:</text>
+        <text x="72" y="148" fill="var(--text)">abortFlag != 0 → send nothing</text>
+        <text x="72" y="172" fill="var(--text)">close(peerSocks[self])</text>
+        <text x="88" y="196" fill="var(--muted)">aliases 2 → 1 (helper holds one)</text>
+        <text x="88" y="220" fill="var(--accent)">→ no wire event</text>
+        <text x="56" y="252" fill="var(--text)">commFree:</text>
+        <text x="72" y="276" fill="var(--text)">pthread_join(service thread)</text>
+        <text x="400" y="76" fill="var(--text)">abortFlag seen → stop = 1</text>
+        <text x="400" y="100" fill="var(--text)">npeers = 1 (the self-connection)</text>
+        <text x="400" y="124" fill="var(--muted)">poll(500 ms) … nothing</text>
+        <text x="400" y="148" fill="var(--muted)">poll(500 ms) … nothing</text>
+        <text x="400" y="172" fill="var(--muted)">poll(500 ms) … nothing</text>
+        <text x="400" y="196" fill="var(--muted)">poll(500 ms) … nothing</text>
+        <text x="400" y="220" fill="var(--accent)">npeers = 1. indefinitely.</text>
+        <line x1="248" y1="272" x2="392" y2="228" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#f4a)"/>
+        <text x="400" y="252" fill="var(--accent)">blocked until that alias releases —</text>
+        <text x="400" y="270" fill="var(--accent)">potentially forever</text>
+        <rect x="150" y="310" width="420" height="48" fill="var(--seg)" opacity="0.08"/>
+        <rect x="150" y="310" width="420" height="48" fill="none" stroke="var(--seg)" stroke-width="1.2" stroke-dasharray="5 4"/>
+        <text x="360" y="330" text-anchor="middle" fill="var(--seg)">forked helper · third process, idle and healthy</text>
+        <text x="360" y="347" text-anchor="middle" fill="var(--muted)" font-size="10">holds the deciding alias; appears in no interesting stack trace</text>
+        <line x1="252" y1="308" x2="212" y2="228" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--seg)"></span>the bystander process</span>
+      <span><span class="k" style="background:var(--accent)"></span>the missing event and what waits on it</span>
+    </p>
+  </div>
+</figure>
 
 Two threads of one process, connected to each other through the kernel's TCP stack, deadlocked by the fd table of a *third* process that appears in no interesting stack trace — a forked helper, idle and healthy, incidentally clutching a duplicate of the client end it will never use. In our incident the natural suspects were the dataloader workers; NVIDIA's fix comment (§8) names `fork()` generically, and our surviving evidence doesn't pin which forked helper it was, so treat the worker attribution as reconstruction. The mechanism doesn't care which child it was. Only that one existed.
 
@@ -278,20 +410,46 @@ ncclResult_t ncclSocketClose(struct ncclSocket* sock) {
 
 Why does [`shutdown()`](https://man7.org/linux/man-pages/man2/shutdown.2.html) succeed where `close()` couldn't? It also takes a descriptor — but instead of releasing one alias, it changes the state of the **shared socket** that all the aliases refer to, without waiting for the final descriptor alias. `SHUT_WR` initiates the orderly write-side close the peer can observe; `SHUT_RDWR` disables both directions. The alias count — the mechanism that let a bystander process veto the close — is simply not consulted; the helpers' duplicates still exist afterward and no longer decide anything.
 
-```text title="fig. 5 · the wire, before and after (quiescent connection, as in the reproducer)"
-  2.17.1 — close() only, helper holds an alias
-  rank: close(fd)          ── aliases 2→1 ──  (no wire event)
-  svc:  poll … poll … poll …                  npeers stuck. hang.
-  helper exits (minutes? hours?)  ── close ──►  svc: finally.
-
-  2.18.1 — shutdown() then close()
-  rank: shutdown(fd, SHUT_RDWR) ── observable close ──►  svc: recv()==0 → npeers--
-  rank: close(fd)                                        service loop exits
-                                                         pthread_join returns  ✓
-
-  (with data already queued, the peer reads those bytes first and then
-   sees the EOF; the connection here is quiescent, so EOF is immediate)
-```
+<figure class="frame diagram">
+  <span class="frame-title">fig. 5 · the wire, before and after (quiescent connection, as in the reproducer)</span>
+  <div class="diagram-body">
+    <svg viewBox="0 0 720 352" role="img" aria-label="Two panels. Panel one, NCCL 2.17.1 with close only: the rank's close drops the alias count with no wire event, the service polls with npeers stuck, and only the helper's eventual exit, minutes or hours later, delivers the close. Panel two, NCCL 2.18.1 with shutdown then close: shutdown produces an observable close immediately, the service sees recv return zero, npeers drains, the loop exits and pthread_join returns, while the helper is still alive holding a duplicate that no longer decides anything.">
+      <defs>
+        <marker id="f5a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"/>
+        </marker>
+        <marker id="f5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <g font-family="var(--font-mono)" font-size="11">
+        <rect x="24" y="26" width="672" height="130" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+        <text x="38" y="48" fill="var(--text)">2.17.1 · close() only — helper holds an alias</text>
+        <text x="38" y="76" fill="var(--text)">rank: close(fd)</text>
+        <line x1="160" y1="72" x2="330" y2="72" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="345" y="76" fill="var(--muted)">aliases 2→1 · no wire event · nothing arrives</text>
+        <text x="38" y="104" fill="var(--muted)">svc:  poll … poll … poll …  npeers stuck. hang.</text>
+        <text x="38" y="136" fill="var(--text)">helper exits (minutes? hours?)</text>
+        <line x1="270" y1="132" x2="430" y2="132" stroke="var(--muted)" stroke-width="1.4" marker-end="url(#f5a)"/>
+        <text x="442" y="136" fill="var(--muted)">close delivered. svc: finally.</text>
+        <rect x="24" y="180" width="672" height="126" fill="var(--accent)" opacity="0.05"/>
+        <rect x="24" y="180" width="672" height="126" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text x="38" y="202" fill="var(--text)">2.18.1 · shutdown() then close()</text>
+        <text x="38" y="230" fill="var(--text)">rank: shutdown(fd, SHUT_RDWR); close(fd)</text>
+        <line x1="310" y1="226" x2="420" y2="226" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#f5b)"/>
+        <text x="432" y="230" fill="var(--accent)">observable close, immediately</text>
+        <text x="38" y="258" fill="var(--text)">svc:  recv()==0 → npeers-- → loop exits → pthread_join returns ✓</text>
+        <text x="38" y="286" fill="var(--muted)" font-size="10">the helper is still alive, still holding its duplicate — it no longer decides anything</text>
+        <text x="24" y="326" fill="var(--muted)" font-size="10">with data already queued, the peer reads those bytes first and then sees the EOF;</text>
+        <text x="24" y="340" fill="var(--muted)" font-size="10">this connection is quiescent, so EOF is immediate</text>
+      </g>
+    </svg>
+    <p class="legend">
+      <span><span class="k" style="background:var(--muted)"></span>close(): the event that may never come</span>
+      <span><span class="k" style="background:var(--accent)"></span>shutdown(): the event that always does</span>
+    </p>
+  </div>
+</figure>
 
 Because the fix lives inside `ncclSocketClose`, every connected control socket closed through the wrapper — the abort path's `peerSocks`, the service thread retiring a connection, the bootstrap ring — gains the behavior at once. (The wrapper is also used on listening and not-yet-connected sockets, where `shutdown()` can fail; NCCL ignores its return value, harmlessly.)
 
