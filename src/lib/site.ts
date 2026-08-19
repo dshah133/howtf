@@ -4,7 +4,6 @@ export const SITE = {
     "Deep dives from the bottom of the systems stack: kernel, loader, GPU, virtual machine monitor. Every story starts with a bug and the question: howtf did that happen?",
   author: "Deep Shah",
   url: "https://howtf.io",
-  github: "https://github.com/dshah133",
   linkedin: "https://www.linkedin.com/in/shde/",
   // Buttondown newsletter — form posts here once the account exists
   newsletterAction: "https://buttondown.com/api/emails/embed-subscribe/howtf",
