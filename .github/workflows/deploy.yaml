@@ -24,7 +24,41 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Snapshot the currently-live sitemap BEFORE this deploy replaces it,
+      # so we can submit only new/changed URLs to IndexNow afterwards.
+      - name: Snapshot live sitemap
+        run: curl -sfL https://howtf.io/sitemap-0.xml -o /tmp/live-sitemap.xml || : > /tmp/live-sitemap.xml
       - run: npm run build
+      - name: Compute new/changed URLs for IndexNow
+        run: |
+          python3 - <<'EOF'
+          import re
+
+          def entries(path):
+              try:
+                  xml = open(path).read()
+              except OSError:
+                  return {}
+              out = {}
+              for m in re.finditer(r"<url>(.*?)</url>", xml, re.S):
+                  loc = re.search(r"<loc>(.*?)</loc>", m.group(1))
+                  lastmod = re.search(r"<lastmod>(.*?)</lastmod>", m.group(1))
+                  if loc:
+                      out[loc.group(1)] = lastmod.group(1) if lastmod else ""
+              return out
+
+          live = entries("/tmp/live-sitemap.xml")
+          built = entries("dist/sitemap-0.xml")
+          changed = [u for u, lm in built.items() if live.get(u) != lm or u not in live]
+          with open("/tmp/indexnow-urls.txt", "w") as f:
+              f.write("\n".join(changed))
+          print(f"{len(changed)} new/changed URL(s):")
+          print("\n".join(changed) or "(none)")
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: indexnow-urls
+          path: /tmp/indexnow-urls.txt
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -38,3 +72,43 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Tell the IndexNow-participating engines (Bing, Yandex, Naver, Seznam, Yep;
+  # DuckDuckGo and the AI answer engines ride Bing's index) about new/changed
+  # URLs. Google does not participate in IndexNow: it discovers via the
+  # sitemap's lastmod + the one-time Search Console registration.
+  # The key is public by design — it must be hosted world-readable on the site.
+  indexnow:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: indexnow-urls
+      - name: Submit new/changed URLs to IndexNow
+        run: |
+          if [ ! -s indexnow-urls.txt ]; then
+            echo "No new or changed URLs; nothing to submit."
+            exit 0
+          fi
+          payload=$(python3 - <<'EOF'
+          import json
+          urls = [u.strip() for u in open("indexnow-urls.txt") if u.strip()]
+          print(json.dumps({
+              "host": "howtf.io",
+              "key": "dbc8a2134e2dcb7b8230195b2c08f45e",
+              "keyLocation": "https://howtf.io/dbc8a2134e2dcb7b8230195b2c08f45e.txt",
+              "urlList": urls,
+          }))
+          EOF
+          )
+          code=$(curl -s -o /tmp/resp -w '%{http_code}' -X POST \
+            'https://api.indexnow.org/indexnow' \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -d "$payload")
+          echo "IndexNow response: HTTP $code"
+          cat /tmp/resp || true
+          case "$code" in
+            200|202) exit 0 ;;
+            *) exit 1 ;;
+          esac

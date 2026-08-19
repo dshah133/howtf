@@ -1,7 +1,24 @@
 // @ts-check
+import { readdirSync, readFileSync } from "node:fs";
 import { defineConfig } from "astro/config";
 import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
+
+// Per-post <lastmod> for the sitemap, read from frontmatter (updated wins
+// over date). Google only honors lastmod when it is accurate and stable
+// across deploys, so it must come from the content, never from build time.
+const postLastmod = new Map();
+for (const file of readdirSync("./src/content/blog")) {
+  const m = file.match(/^(.+)\.(md|mdx)$/);
+  if (!m) continue;
+  const fm = readFileSync(`./src/content/blog/${file}`, "utf8").match(
+    /^---\n([\s\S]*?)\n---/,
+  );
+  if (!fm) continue;
+  const pick = (key) => fm[1].match(new RegExp(`^${key}:\\s*(\\S+)`, "m"))?.[1];
+  const lastmod = pick("updated") ?? pick("date");
+  if (lastmod) postLastmod.set(`/blog/${m[1]}/`, new Date(lastmod));
+}
 import preact from "@astrojs/preact";
 import expressiveCode from "astro-expressive-code";
 import { pluginCollapsibleSections } from "@expressive-code/plugin-collapsible-sections";
@@ -41,7 +58,13 @@ export default defineConfig({
       },
     }),
     mdx(),
-    sitemap(),
+    sitemap({
+      serialize(item) {
+        const lastmod = postLastmod.get(new URL(item.url).pathname);
+        if (lastmod) item.lastmod = lastmod.toISOString();
+        return item;
+      },
+    }),
     preact(),
   ],
 });
