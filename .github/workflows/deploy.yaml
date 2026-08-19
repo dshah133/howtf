@@ -27,7 +27,8 @@ jobs:
       # Snapshot the currently-live sitemap BEFORE this deploy replaces it,
       # so we can submit only new/changed URLs to IndexNow afterwards.
       - name: Snapshot live sitemap
-        run: curl -sfL https://howtf.io/sitemap-0.xml -o /tmp/live-sitemap.xml || : > /tmp/live-sitemap.xml
+        run: |
+          curl -sfL https://howtf.io/sitemap-0.xml -o /tmp/live-sitemap.xml || : > /tmp/live-sitemap.xml
       - run: npm run build
       - name: Compute new/changed URLs for IndexNow
         run: |
