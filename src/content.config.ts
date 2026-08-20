@@ -20,7 +20,8 @@ const blog = defineCollection({
       })
       .optional(),
     tags: z.array(z.string()).default([]),
-    // hand-picked "start here" posts, surfaced first on the homepage
+    // hand-picked "[start here]" posts: tagged in place in post lists,
+    // never reordered out of reverse-chronological position
     featured: z.boolean().default(false),
     // links to where the post is being discussed, keyed by venue
     // e.g. { "hacker news": "https://news.ycombinator.com/item?id=..." }

@@ -27,7 +27,7 @@ const years = [...byYear.keys()].sort((a, b) => b - a);
   <main class="shell">
     <div class="home-center archive">
       <div>
-        <h1>// all sessions</h1>
+        <h1>// all posts</h1>
         <p class="eyebrow topics-line">
           topic hubs:{" "}
           {Object.entries(TOPIC_HUBS).map(([tag, href], i) => (
@@ -44,7 +44,7 @@ const years = [...byYear.keys()].sort((a, b) => b - a);
               <ul>
                 {byYear.get(y)!.map((post) => (
                   <li>
-                    <PostCard post={post} />
+                    <PostCard post={post} tag={post.data.featured ? "[start here]" : undefined} />
                   </li>
                 ))}
               </ul>

@@ -4,12 +4,12 @@ import { fmtDate, readingTime } from "../lib/site";
 
 interface Props {
   post: CollectionEntry<"blog">;
-  /** pane title, e.g. "latest session" */
+  /** pane title, e.g. "latest post" */
   label?: string;
   tag?: string;
 }
 
-const { post, label = "session", tag } = Astro.props;
+const { post, label = "post", tag } = Astro.props;
 const { title, description, date, series } = post.data;
 ---
 
