@@ -222,35 +222,6 @@ strong {
 }
 
 /* ---------- statusline footer ---------- */
-.site-footer {
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-  padding: 0.45rem 1rem;
-  font-family: var(--font-display);
-  font-size: 0.78rem;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 1.5rem;
-  align-items: center;
-}
-.site-footer .seg {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 0 0.5rem;
-}
-.site-footer a {
-  color: var(--muted);
-  text-decoration: none;
-}
-.site-footer a:hover {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.site-footer .right {
-  margin-left: auto;
-}
-
 /* ---------- the pane (signature): bordered panel, title inset in border ----------
    ┌─ title ──────────────[tag]─┐   No fill, no shadow, no radius: a tmux pane. */
 .frame {
@@ -307,25 +278,6 @@ strong {
   font-family: var(--font-display);
   font-size: 0.8rem;
   color: var(--muted);
-}
-
-/* homepage masthead nav — same idiom as .site-header nav */
-.home-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
-  margin-top: 1rem;
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-}
-.home-nav a {
-  text-decoration: none;
-  color: var(--muted);
-  padding: 0.1rem 0.2rem;
-}
-.home-nav a:hover {
-  background: var(--accent);
-  color: var(--accent-ink);
 }
 
 .prompt {

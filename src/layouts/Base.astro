@@ -11,7 +11,7 @@ interface Props {
   ogImage?: string;
   /** extra JSON-LD objects to embed */
   jsonLd?: object[];
-  /** show the sticky site header (off on the homepage, which has its own masthead) */
+  /** show the sticky site header */
   header?: boolean;
   current?: string;
 }
@@ -112,12 +112,6 @@ const ogImageUrl = new URL(ogImage, Astro.site).href;
       )
     }
     <slot />
-    <footer class="site-footer">
-      <span class="seg">© {SITE.author}</span>
-      <a href="/rss.xml">rss</a>
-      <a href={SITE.linkedin}>linkedin</a>
-      <span class="right seg">bay area · utc-8</span>
-    </footer>
 
     <script>
       const btns = document.querySelectorAll<HTMLButtonElement>(".theme-toggle");
