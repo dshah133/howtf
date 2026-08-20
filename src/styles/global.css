@@ -791,11 +791,6 @@ a.chip-pill:hover::after {
   font-size: 0.85rem;
 }
 
-/* author card */
-.author-card {
-  margin-top: 3rem;
-}
-
 /* discussion links */
 .discussion {
   margin-top: 2rem;

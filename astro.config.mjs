@@ -19,7 +19,6 @@ for (const file of readdirSync("./src/content/blog")) {
   const lastmod = pick("updated") ?? pick("date");
   if (lastmod) postLastmod.set(`/blog/${m[1]}/`, new Date(lastmod));
 }
-import preact from "@astrojs/preact";
 import expressiveCode from "astro-expressive-code";
 import { pluginCollapsibleSections } from "@expressive-code/plugin-collapsible-sections";
 import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
@@ -65,6 +64,5 @@ export default defineConfig({
         return item;
       },
     }),
-    preact(),
   ],
 });
