@@ -198,6 +198,8 @@ CPU copy-on-write works because the CPU asks permission. After `fork()`, parent 
 
 Memory registration builds a second translation path that never asks. A classic (non-ODP) MR is designed to remove page faults from the fast path: at registration time the kernel [resolves and pins the pages long-term](https://github.com/torvalds/linux/blob/a7c7074b58d28c4206d666a12aa2e33447b3c581/drivers/infiniband/core/umem.c) (`pin_user_pages_fast()` with `FOLL_LONGTERM`, plus `FOLL_WRITE` for writable MRs), builds a scatter-gather list, and maps it into the device's DMA address space. From then on the RNIC resolves RDMA addresses through its own MR translation to those pinned pages. It does not walk the process page tables, it cannot see a copy-on-write bit, and its DMA write cannot take a CPU page fault. If the process forks and a COW-shared `P` is still the RNIC's target, the device writes `P` directly, and whichever process the kernel had decided should get "the old contents" gets the new bytes instead. Even a notification after the DMA would be too late: the fork-time snapshot is already destroyed.
 
+> If you want the full construction behind that second translation path, [*howtf does a NIC write directly into GPU memory?*](/blog/nic-writes-directly-into-gpu-memory/) builds memory registration from the bottom up: DMA, PCIe BARs, MKeys, and what a registered MR actually is.
+
 <figure class="frame diagram">
   <span class="frame-title">fig. 3 · one page, two translation paths, one asks permission</span>
   <div class="diagram-body">
