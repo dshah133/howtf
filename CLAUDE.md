@@ -21,6 +21,44 @@ virtualization). Live at **https://howtf.io**.
   push that deploys, unless he asked for that specific push.**
 - gh account for this repo: **dshah133** (personal).
 
+## Publishing a post (the whole workflow)
+
+A post is ONE markdown file in `src/content/blog/<slug>.md`. The filename is
+the URL slug, casing preserved (`/blog/<slug>/`). Everything else — home and
+blog lists, series hub, topic hub, RSS, sitemap `lastmod`, llms.txt,
+llms-full.txt, OG image, IndexNow submission — is generated from its
+frontmatter by the build that deploys it. Never hand-edit any of those.
+
+Frontmatter (schema enforced by zod in `src/content.config.ts`; build fails
+on violations):
+
+```yaml
+---
+title: "howtf ...?"            # required
+description: "One-sentence hook."   # required; used in lists, RSS, llms.txt, OG
+date: 2026-08-25               # required; publication date, drives sitemap lastmod
+updated: 2026-09-01            # optional; set on material revision (wins over date)
+series:                        # optional; creates/extends a series hub page
+  name: "Memory Registration, All the Way Down"
+  part: 3
+tags: [rdma]                   # optional; a tag in TOPIC_HUBS links the post to its hub
+featured: true                 # optional; adds "[start here]" tag in place
+draft: true                    # excluded from EVERYTHING until flipped
+---
+```
+
+Workflow:
+- **Draft**: create the file with `draft: true`. Safe to commit and push;
+  drafts are excluded from all lists, feeds, sitemap, and llms files.
+- **Publish**: set the real `date`, remove `draft` (or set `false`), run
+  `npm run build` locally to catch schema/build errors, then push to main
+  (deploys — needs Deep's per-push confirmation, see Deploy above).
+- **Revise a published post**: edit content; set/update `updated:` only for
+  material changes (it feeds the sitemap `lastmod` crawlers act on).
+- **New topic hub**: a page in `src/pages/topics/` and its entry in
+  `TOPIC_HUBS` (`src/lib/site.ts`) must be added together — the build
+  asserts they match and fails on drift. Series need no registration.
+
 ## Writing style (IMPORTANT — applies to all prose on this site)
 - **Minimize em dashes.** They are overused across the site. Prefer a comma,
   colon, period, or parentheses, and rewrite the sentence rather than
