@@ -89,7 +89,7 @@ const jsonLd = [
               post.data.tags
                 .filter((t) => TOPIC_HUBS[t])
                 .map((t) => (
-                  <a class="chip-pill" href={TOPIC_HUBS[t]}>
+                  <a class="chip-pill" href={TOPIC_HUBS[t].href}>
                     {t} deep dives
                   </a>
                 ))

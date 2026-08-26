@@ -9,9 +9,19 @@ export const SITE = {
   newsletterAction: "https://buttondown.com/api/emails/embed-subscribe/howtf",
 };
 
-// tags that have a topic hub page; tags listed here render as links on posts
-export const TOPIC_HUBS: Record<string, string> = {
-  rdma: "/topics/rdma/",
+// tags that have a topic hub page; tags listed here render as links on posts.
+// One entry per file in src/pages/topics/ — llms.txt asserts the two stay in
+// sync at build time, so a drift fails the build instead of silently
+// dropping a hub from the index.
+export const TOPIC_HUBS: Record<
+  string,
+  { href: string; title: string; blurb: string }
+> = {
+  rdma: {
+    href: "/topics/rdma/",
+    title: "RDMA deep dives",
+    blurb: "all RDMA/InfiniBand posts.",
+  },
 };
 
 const WPM = 240;

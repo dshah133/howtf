@@ -30,10 +30,10 @@ const years = [...byYear.keys()].sort((a, b) => b - a);
         <h1>// all posts</h1>
         <p class="eyebrow topics-line">
           topic hubs:{" "}
-          {Object.entries(TOPIC_HUBS).map(([tag, href], i) => (
+          {Object.entries(TOPIC_HUBS).map(([tag, hub], i) => (
             <>
               {i > 0 && " · "}
-              <a href={href}>{tag}</a>
+              <a href={hub.href}>{tag}</a>
             </>
           ))}
         </p>

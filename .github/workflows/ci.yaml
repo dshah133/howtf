@@ -1,0 +1,26 @@
+# Build check for anything that is NOT a push to main (PRs, side branches).
+# Pushes to main are covered by deploy.yaml: its build job runs the same
+# `npm run build`, and if that fails the deploy job never runs, so the live
+# site stays on the previous version. This workflow gives the same signal
+# before anything reaches main.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
