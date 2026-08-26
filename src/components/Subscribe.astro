@@ -1,12 +1,18 @@
 ---
 import { SITE } from "../lib/site";
+
+interface Props {
+  /** Show the RSS / LinkedIn links before the form. Off on pages that already list them. */
+  links?: boolean;
+}
+const { links = true } = Astro.props;
 ---
 
 <div class="frame">
   <span class="frame-title">subscribe</span>
   <div class="subscribe-row">
-    <a href="/rss.xml">RSS</a>
-    <a href={SITE.linkedin}>LinkedIn</a>
+    {links && <a href="/rss.xml">RSS</a>}
+    {links && <a href={SITE.linkedin}>LinkedIn</a>}
     <form action={SITE.newsletterAction} method="post" target="_blank">
       <label for="nl-email">a deep dive every month or two:</label>
       <input
