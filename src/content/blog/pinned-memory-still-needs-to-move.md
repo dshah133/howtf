@@ -2,6 +2,7 @@
 title: "howtf can pinned memory still need to move?"
 description: "The Linux memory-management mechanism underneath the incident: pages, pageblocks, CMA, FOLL_PIN, FOLL_LONGTERM, migration, and the second pin that returned ENOMEM. Part 3 of Memory Registration, All the Way Down."
 date: 2026-08-25
+updated: 2026-09-05
 series:
   name: "Memory Registration, All the Way Down"
   part: 3
@@ -19,15 +20,9 @@ RDMA then tried to pin the same page.
 The second pin failed because Linux needed to move it.
 ```
 
-If “pinned” means “cannot move,” why did Linux try to move it? If the page was already resident, why did RDMA need another pin at all? Why did the failure become `ENOMEM` instead of “already pinned” or “busy”?
+The two pinning calls asked for different things. CUDA held the current page in place. RDMA requested a long-lived DMA mapping, which required Linux to check whether the page could safely stay in its current location.
 
-The answer is that **pinning is not one Boolean property with one contract**.
-
-The first caller asked Linux to hold the current page. The second caller declared that the page would participate in long-lived device DMA. That declaration activates placement rules the first caller did not request. A page inside CMA cannot simply stay there under a long-term pin, because CMA exists on the assumption that its temporary occupants can be evacuated.
-
-Linux therefore had to move the page *before* accepting the second contract. The first pin made that move impossible.
-
-This post builds that mechanism from a 4 KiB page upward.
+The page was in CMA, where ordinary allocations must remain movable. Linux needed to move it before accepting the long-term pin, but the earlier CUDA pin prevented that. We’ll follow those checks from the page’s physical placement through to `ENOMEM`.
 
 > **Scope note.** The source walk uses Linux 6.x and public NVIDIA open-kernel-module releases. Helper names have changed across kernel versions, but the invariant is stable: long-term DMA pins cannot strand ordinary pages in memory that must remain migratable. The production kernel had internal patches, so reconstructed traces are illustrative rather than original logs.
 
@@ -149,7 +144,7 @@ MIGRATE_CMA
 MIGRATE_ISOLATE
 ```
 
-This is allocator policy, not an immutable property burned into every page.
+The migratetype describes the allocator’s policy for a pageblock.
 
 A page from a `MIGRATE_MOVABLE` block is expected to be movable. A page from a `MIGRATE_CMA` block occupies physical space reserved for the Contiguous Memory Allocator and must remain removable when CMA needs the range back.
 
@@ -217,7 +212,7 @@ NUMA node 0                         NUMA node 1
 +-----------------------------+     +-----------------------------+
 ```
 
-This is an aggregate reservation of *physical opportunity*, not necessarily six prebuilt huge pages. The per-node split also makes NUMA placement part of the failure probability.
+The reservation can provide up to six 1 GiB huge pages across the nodes, but it does not necessarily create those pages at boot. The per-node split also affects whether a later allocation lands in CMA.
 
 The kernel can later ask CMA for a 1 GiB contiguous extent. Until then, leaving six GiB idle would waste memory, so CMA allows ordinary **movable** pages to occupy it temporarily.
 
@@ -279,7 +274,7 @@ When a huge-page allocation arrives, CMA isolates the target range, migrates tem
   </div>
 </figure>
 
-The reserve works only if “temporary” remains true.
+CMA can reclaim the range only while its temporary occupants remain movable.
 
 ---
 
@@ -346,11 +341,11 @@ This lets the VM recognize that the page is participating in a device mapping an
 
 > This pin may persist long enough that normal VM operations cannot treat it as a brief interruption.
 
-There is no stopwatch in the API and no exact “longer than N seconds” threshold. It describes the intended use: long-lived DMA mappings such as classic RDMA MRs.
+`FOLL_LONGTERM` describes the intended lifetime of a mapping, such as a classic RDMA MR. The API does not define a duration threshold in seconds.
 
 `FOLL_LONGTERM` implies that Linux must reject or relocate pages whose location cannot safely be stranded for that lifetime.
 
-The important relationship is:
+The diagram compares these forms of residency and pinning:
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 3 · "pinned" is a ladder of contracts, not a Boolean</span>
@@ -388,7 +383,7 @@ The important relationship is:
   </div>
 </figure>
 
-The second call does not merely increment a “stronger pin counter.” It asks Linux to validate a stronger system-wide invariant.
+A long-term pin also requires Linux to validate the page’s placement.
 
 ---
 
@@ -422,11 +417,7 @@ CMA pages do not, in place.
 
 ## 8. Why a long-term pin cannot stay inside CMA
 
-CMA has one job: produce physically contiguous memory later.
-
-A long-term-pinned page has one job: keep its physical DMA destination stable for a device.
-
-Put both promises on one page:
+CMA needs to reclaim contiguous physical ranges by moving their occupants. A long-term DMA pin requires a stable physical destination for the device. Those requirements conflict when they apply to the same page:
 
 ```text
 CMA promise:
@@ -519,8 +510,6 @@ NCCL host allocation
 
 The page is now immobile in practice while CUDA holds the pin, but it entered that state without passing the placement validation designed for long-lived DMA.
 
-That is the missing semantic distinction:
-
 > The first pin stabilized the current page. It did not first establish that the page lived in a location safe for a long-term pin.
 
 ---
@@ -565,9 +554,7 @@ migrate page to ordinary memory
 
 On Linux 6.x, the source contains helpers with names such as `check_and_migrate_movable_pages()` or their folio-oriented successors. The migration reason is `MR_LONGTERM_PIN`.
 
-Without the earlier CUDA pin, this is a repair path.
-
-With the earlier pin, it becomes the failure path.
+The migration can repair the placement if CUDA has not already pinned the page. With the earlier pin still held, that repair fails.
 
 ---
 
@@ -608,9 +595,7 @@ actual != expected
     -> cannot safely move P
 ```
 
-The first pin did exactly what a pin is supposed to do: it stopped the page from moving.
-
-The second registration failed because its validation required the page to move first.
+The earlier CUDA pin prevented the move that RDMA’s placement check required.
 
 ---
 
@@ -630,7 +615,7 @@ migrate_pages() does not migrate every page
     -> NCCL prints "Cannot allocate memory"
 ```
 
-The word *allocate* is not entirely wrong. Migration needs a replacement page and the ability to move state into it. But the machine may have abundant free memory. The blocking resource is a valid migration target plus a movable source, not raw capacity.
+Migration needs a suitable replacement page and a source page that can be moved. Free RAM alone does not make the source movable.
 
 This is one of several meanings hidden behind MR `ENOMEM`:
 
@@ -755,7 +740,7 @@ The first device pins without the placement declaration:
   </div>
 </figure>
 
-This is not a race in the narrow sense that two threads must hit one instruction simultaneously. It is an **ordering-dependent contract bug**. Once the first pin exists, the later validation can fail deterministically for that physical page.
+The failure depends on the order of the pinning calls. They do not have to run simultaneously: once the first pin holds this physical page, the later placement check can fail deterministically.
 
 The apparent randomness comes from whether the allocation landed in CMA and when the two registrations occurred.
 
@@ -785,7 +770,7 @@ R555 public path:
 
 The newer code also contains a workaround for kernels where a large long-term GUP request can hit an allocation limit while building VMA metadata, retrying in smaller chunks on `ENOMEM`.
 
-We should not claim that this change was made because of the Meta incident; the public commit history does not establish that. But it changes exactly the semantic gap involved:
+The public commit history does not link this change to the Meta incident. It does show the placement check moving to the first pin:
 
 ```text
 before:
@@ -825,7 +810,7 @@ The GPU fleet did not need the six-gigabyte HugeTLB CMA area. Disabling it elimi
 hugetlb_cma=0
 ```
 
-This fix also had the smallest semantic blast radius for the training role:
+Without that reserve, registration no longer needed to move pages out of CMA:
 
 ```text
 no CMA page
@@ -970,11 +955,7 @@ MKey/provider failure stage
 
 Not every field belongs in every log line. A structured trace or error report can gather them conditionally on failure.
 
-The important design rule is:
-
-> Do not let a deep page-migration failure become only “NCCL system error.”
-
-A single field—`pageblock=MIGRATE_CMA`—would have changed the first week of this investigation.
+In this case, a registration failure report needed to preserve `pageblock=MIGRATE_CMA` and the failed migration, rather than stopping at “NCCL system error.”
 
 ---
 
@@ -999,27 +980,17 @@ Two callers can both say “pinned” and still disagree about placement and lif
 
 Most application code treats physical memory as an implementation detail. Device DMA makes placement observable. `ZONE_MOVABLE`, CMA, device memory, DAX, and filesystem-backed pages all carry rules that a long-term pin must respect.
 
-### The first successful operation can create the later failure
-
-CUDA’s pin succeeded. That success was not proof that the page was suitable for every future DMA user. It was the operation that removed Linux’s ability to repair the placement later.
-
-### An optimization can spend another subsystem’s invariant
-
-CMA-first allocation improved memory utilization under one workload model. It spent the assumption that movable allocations would remain movable. A GPU host-memory pin invalidated that assumption without either component knowing the other existed.
-
-### Error names describe the caller’s view
-
-`ENOMEM` meant that GUP could not construct a legal long-term mapping. It did not mean the machine had no memory. Kernel error codes are often lossy summaries of the layer returning them.
+<div id="the-first-successful-operation-can-create-the-later-failure"></div>
+<div id="an-optimization-can-spend-another-subsystems-invariant"></div>
+<div id="error-names-describe-the-callers-view"></div>
 
 ### Fleet roles need different memory policy
 
-A shared kernel is valuable. A shared boot policy is not automatically neutral. HugeTLB reserves, IOMMU modes, NUMA balancing, transparent huge pages, and reclaim settings are interfaces to every DMA-heavy workload on the host.
+HugeTLB reserves, IOMMU modes, NUMA balancing, transparent huge pages, and reclaim settings can affect DMA-heavy workloads. Sharing a kernel across fleet roles does not mean they all need the same boot policy.
 
 ---
 
 ## 19. The invariant that would have prevented the incident
-
-The durable invariant is:
 
 > **A page must pass its strongest lifetime and placement contract before any subsystem makes it immovable.**
 
@@ -1045,7 +1016,6 @@ pin now under a weak placement contract
 validate long-term placement later
 ```
 
-Later may be too late.
 
 ## 20. A note on modern stacks
 
@@ -1059,19 +1029,7 @@ Three later changes matter:
 
 Those changes rearrange or close this particular path; they do not make memory-lifetime contracts irrelevant. Older driver branches, vendor forks, and third-party device pins can still create the same general ordering error. The first debugging step should always be to identify the exact allocation, registration API, driver flavor, and GUP flags on the versions actually running.
 
----
-
-## Epilogue
-
-CMA saw a movable page. CUDA saw a resident host page. RDMA saw a future DMA target.
-
-All three descriptions were true at different moments.
-
-The bug lived in the transition between them. Linux lent the page from a reserve because it was movable. CUDA pinned it while that placement was still legal under the flags it supplied. RDMA later declared the long-term lifetime that made the placement illegal. Linux tried to repair the mismatch by migrating the page, and the earlier pin correctly prevented it.
-
-The page was pinned. That was exactly why the second pin failed.
-
----
+<div id="epilogue"></div>
 
 ## Source map
 

@@ -2,6 +2,7 @@
 title: "howtf did a GPU memory-registration error come from host RAM?"
 description: "A production debugging story across NCCL, ConnectX, nvidia-peermem, DMA-BUF, retsnoop, and an inherited six-gigabyte CMA reserve. Part 2 of Memory Registration, All the Way Down."
 date: 2026-08-23
+updated: 2026-09-05
 series:
   name: "Memory Registration, All the Way Down"
   part: 2
@@ -87,8 +88,6 @@ For a while, the workaround was good enough to let training proceed.
 
 The mitigation was operationally valuable because it returned capacity while the investigation continued. It also made the checkpoint correlation easy to over-weight.
 
-The correlation was real. It was not the root cause.
-
 ---
 
 ## 3. There was also a real NVIDIA teardown race
@@ -107,11 +106,7 @@ I/O driver calls nvidia_p2p_put_pages()
 
 NVIDIA introduced persistent `get_pages` / `put_pages` APIs to avoid that callback race, updated `nvidia-peermem`, shipped the change in R535.14+, and backported it to R525.105.17+.
 
-That was a genuine lifecycle bug. Installing the vendor fix reduced the failures.
-
-It did not eliminate them.
-
-This distinction matters. A failed theory is not the same as a false observation. The team had found one real defect, fixed it, and still had another defect producing a similar top-level signature.
+Installing the vendor fix reduced the failures, but jobs were still failing with similar NCCL errors. We had fixed one defect and still had another to find.
 
 At the NCCL layer, both looked like this:
 
@@ -152,15 +147,9 @@ CUDA buffer
   -> mlx5 MKey
 ```
 
-This was a good experiment. It removed the legacy peer-memory ownership protocol, its private callback interface, and much of the stale-mapping surface from GPU-buffer registration.
+The change removed the legacy peer-memory ownership protocol, its private callback interface, and much of the stale-mapping surface from GPU-buffer registration.
 
-The failure rate dropped again.
-
-For a short period, that looked like the end. The remaining incidence was low enough that it was tempting to attribute it to rollout noise or unrelated resource failures.
-
-Then a new workload started failing with the same family of messages. It did not have the checkpoint overlap that had anchored the first theory.
-
-That ruled out checkpoint overlap as a necessary condition.
+The failure rate dropped again. For a short period, the remaining failures looked like rollout noise or unrelated resource problems. Then a new workload started failing with the same family of messages despite having no checkpoint overlap. Checkpoint overlap could no longer explain every failure.
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 1 · four months of plausible fixes</span>
@@ -204,19 +193,13 @@ That ruled out checkpoint overlap as a necessary condition.
 
 ## 5. The fleet could not become a laboratory
 
-The obvious debugging request was: reserve a cluster, run the job until it fails, add more logging, repeat.
-
-That was not practical.
+Reserving a cluster and running the job until it failed would have tied up too much training capacity.
 
 A rare failure on one H100 node is already expensive to reproduce. A distributed failure may require many nodes, the right allocator history, the right process timing, and enough runtime for a lazy connection or secondary communicator to initialize. Parking that capacity indefinitely removes it from training. Rebooting into instrumented kernels or repeatedly changing drivers adds another operational cost.
 
 The affected clusters needed to keep doing useful work. A retry was cheaper than reserving a large slice of the fleet for an open-ended experiment—even though, across the fleet, the retries were expensive.
 
-That constraint changed the debugging strategy.
-
-We could not force the failure to happen in a laboratory. We had to make production preserve enough evidence when it happened naturally.
-
-The investigation became an observability problem:
+We needed to collect the relevant evidence when a registration failed in production:
 
 ```text
 Do not trace every successful registration.
@@ -231,11 +214,9 @@ That is where retsnoop became useful.
 
 ## 6. Retsnoop: record the error path, not the whole machine
 
-[Retsnoop](https://github.com/anakryiko/retsnoop) is a BPF—historically, Berkeley Packet Filter—based kernel tracing tool designed for exactly this shape of problem: many kernel functions, a rare error return, and too much background activity for a continuous trace to be readable.
+[Retsnoop](https://github.com/anakryiko/retsnoop) is a BPF kernel tracing tool that let us follow rare error returns without recording every call on the machine.
 
 It can attach to a selected entry function, trace an allowed set of callees, and emit only calls that satisfy an error filter. It can also capture arguments and, on supported CPUs, use Last Branch Records to look inside a function whose return value alone is too generic.
-
-The useful property was not an absence of cost. No production tracing deserves that claim. The useful property was **selectivity**.
 
 ```text
 ordinary tracing:
@@ -270,7 +251,7 @@ The critical step was to stop treating the address as “a GPU pointer because N
 
 As reconstructed from the surviving classification, the failing address belonged to the process's host address space. `/proc/<pid>/maps` was one of the checks used while following it, together with the CUDA/NVIDIA import path. The retained conclusion was that this was CPU-backed memory made accessible to CUDA, not an ordinary `cudaMalloc()` framebuffer allocation.
 
-The exact mapping label—anonymous, shmem, or memfd-like—is no longer preserved well enough to publish. The important classification was unambiguous:
+I no longer have the exact mapping label, whether anonymous, shmem, or memfd-like. The surviving evidence did establish where the memory lived:
 
 ```text
 not GPU framebuffer
@@ -278,13 +259,7 @@ not a BAR1 virtual mapping
 CPU-backed host memory
 ```
 
-That produced the question that unlocked the incident:
-
-> Why was a GPUDirect NCCL connection registering CPU memory at all?
-
-Because “GPUDirect transport” does not mean “every internal buffer lives in VRAM.”
-
-NCCL has a CPU control plane inside its GPU data path.
+That left a question about NCCL itself: why was a GPUDirect connection registering CPU memory?
 
 ---
 
@@ -292,7 +267,7 @@ NCCL has a CPU control plane inside its GPU data path.
 
 The public NCCL 2.17.1 source makes the split visible.
 
-NCCL supports multiple protocols, including LL (“low latency”), LL128, and SIMPLE. On a dedicated **send** connection with GPUDirect enabled, the public code places most protocol buffers in device memory but deliberately leaves `NCCL_PROTO_LL` in host memory. How these protocols work, and why LL’s design wants a CPU-readable buffer, deserves its own write-up; we’ll probably do a separate post on that. For this story, the load-bearing fact is simply that the LL buffer lives in host RAM.
+NCCL supports multiple protocols, including LL (“low latency”), LL128, and SIMPLE. On a dedicated **send** connection with GPUDirect enabled, the public code places most protocol buffers in device memory but deliberately leaves `NCCL_PROTO_LL` in host memory.
 
 Abridged to the decision rather than the exact source syntax:
 
@@ -372,7 +347,7 @@ For a host buffer, stock NCCL falls through to the ordinary MR path. With relaxe
 
 This reconciles an otherwise confusing observation: moving GPU buffers to DMA-BUF removed `nvidia-peermem` from the GPU path, but it did not remove ordinary host-memory registration from the connection.
 
-`NCCL_PROTO_LL` is the strongest public-source candidate for the failed range. The original allocation record is unavailable, so the article should preserve one degree of uncertainty: it could have been another CUDA-mapped NCCL host buffer. The mechanism does not depend on the exact field name.
+I no longer have the allocation record. The public NCCL source points to `NCCL_PROTO_LL`, but I can’t rule out another CUDA-mapped NCCL host buffer. The mechanism is the same either way.
 
 The important topology is:
 
@@ -424,8 +399,6 @@ The important topology is:
   </div>
 </figure>
 
-Three subsystems now had opinions about one CPU page’s lifetime.
-
 ---
 
 ## 9. Following the host page into the NVIDIA driver
@@ -460,11 +433,7 @@ FOLL_LONGTERM on x86
 
 That source difference is one of the most useful pieces of corroboration in the whole incident. It says that, in this R525/R535-era public host-registration path, NVIDIA could pin pages without declaring the long-term DMA lifetime that Linux uses to enforce special placement rules. It should not be read as proof that the proprietary production binary reached this exact wrapper.
 
-At this point the page was pinned for CUDA access. The pin succeeded.
-
-The later RNIC registration failed.
-
-That sounds backwards until we inspect the page’s location.
+CUDA had successfully pinned the page, but the later RNIC registration failed. The page’s location explains why.
 
 ---
 
@@ -495,7 +464,6 @@ failed userspace address: 0x7f2c...
     +-- PFN lies inside boot-reserved HugeTLB CMA area
 ```
 
-The immediate reaction was the right one:
 
 > Why would NCCL host memory come from CMA on an H100 training node?
 
@@ -770,7 +738,6 @@ this incident:
     CUDA pins a CMA-backed page before RDMA requests long-term placement
 ```
 
-Keeping those stories separate is important because the same vocabulary—fork, pin, registration, checkpoint—can otherwise make unrelated bugs look like one.
 
 ---
 
@@ -787,9 +754,7 @@ The kernel build, NVIDIA R535 setup, DMA-BUF mode, NCCL generation, and workload
 
 The specific registration failure dropped to zero and stayed absent across the affected clusters for weeks and then months.
 
-That was the strongest piece of evidence in the investigation.
-
-A trace can be misread. Source from a nearby driver flavor can differ from a proprietary binary. A reconstructed call graph can omit a vendor branch. But an intervention that removes exactly the implicated physical-memory reserve while leaving the rest of the system fixed is difficult to explain away.
+That result was stronger evidence than the reconstructed stack: it removed the implicated reserve while leaving the kernel, driver setup, registration mode, and workload unchanged. The nearby public driver source could not establish the exact proprietary call path on its own.
 
 ```text
 CMA enabled
@@ -880,17 +845,6 @@ The final incident fits in one diagram:
 
 Around that chain sat a second real defect—the legacy NVIDIA P2P teardown race—which made the chronology harder to read and made partial fixes look complete.
 
-No single subsystem was absurd:
-
-- CMA expected temporary occupants to remain movable.
-- The allocator preferred CMA to preserve general-purpose memory.
-- CUDA needed host pages stable for GPU access.
-- RDMA required a long-term DMA-safe mapping.
-- NCCL legitimately used CPU memory inside a GPU-direct transport.
-- DMA-BUF legitimately improved the GPU-buffer path.
-
-The contracts did not compose in that order.
-
 ---
 
 ## 19. What the incident changed in how I debug registration failures
@@ -932,7 +886,7 @@ The NVIDIA patch and DMA-BUF rollout were not wrong. They removed real risk. The
 
 ### Configuration is an interface
 
-A boot argument created for web servers changed which physical pages backed a collective library’s internal host buffer on H100 nodes. There was no explicit API call between those teams. The boot configuration *was* the API.
+A boot argument chosen for web servers changed which physical pages backed NCCL host buffers on H100 nodes. Shared boot configuration therefore needs to be checked against the workloads of each fleet.
 
 ### Production observability can be the experiment
 
@@ -986,21 +940,11 @@ Reconstructed:
 - which checkpoint activity most increased the probability;
 - whether the private NVIDIA patch was exactly the publicly documented persistent-P2P change.
 
-Those boundaries will stay visible in the published version. A good systems story becomes weaker, not stronger, when missing logs are replaced with false precision.
-
 ---
 
-## Epilogue
+<div id="epilogue"></div>
 
-The line said that a GPU communication library could not allocate memory.
-
-The machine had memory. The GPU had memory. The BAR was not the problem. The allocation that mattered was a small CPU buffer hidden inside a GPUDirect transport, and the resource that mattered was not capacity but **mobility**.
-
-Linux had lent a physically valuable region to an ordinary page on one condition: the page could be moved later. CUDA accepted the page under a different condition: the page would stay where it was. RDMA arrived last and asked Linux to formalize the second condition for a long time.
-
-By then, the first condition was already broken.
-
-Part 3 is about that sentence: how a page can already be pinned, why RDMA still asks to pin it, and why the second request returns `ENOMEM` instead of simply incrementing a counter.
+[Part 3](/blog/pinned-memory-still-needs-to-move/) follows the two pinning calls into Linux: why RDMA needed the page to move, why the earlier CUDA pin prevented it, and how the failure became `ENOMEM`.
 
 ---
 

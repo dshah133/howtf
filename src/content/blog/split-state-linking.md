@@ -2,6 +2,7 @@
 title: "howtf can a device be both present and not found?"
 description: "A recurring production SEV, an RDMA device that was present and not found, and the decades-old linker rule that split one library's state into two. An InfiniBand deep dive from the linker's side. Part 2 of Linking & Loading."
 date: 2026-07-13
+updated: 2026-09-05
 series:
   name: "Linking & Loading"
   part: 2
@@ -16,23 +17,21 @@ draft: false
 
 ## 1. Present, and not found
 
-The failure that starts this story showed up the way these things do: in the logs and on the dashboards, as training jobs started crashing at startup. The line that mattered was the RDMA stack's classic no-device error, the moral equivalent of `ibv_get_device_list()` coming back empty:
+Training jobs began failing at startup with an RDMA no-device error, equivalent to `ibv_get_device_list()` returning an empty list:
 
 ```text
 No IB devices found
 ```
 
-Paste that string into a search engine and every hit is hardware troubleshooting. Check the cable. Check the firmware. Check that the driver is loaded. Which is exactly the rabbit hole it aims you down, because everything about that error says *the machine*, and nothing about it says *the binary*.
+The error led us toward hardware checks: cables, firmware, and the driver.
 
 But the machine was fine. The device was present by every check anyone could run: it showed up in enumeration, the driver was loaded. And the failing consumer was the last one anyone would suspect: NCCL, the most battle-tested RDMA consumer in the fleet, code nobody had touched, reporting `No IB devices found` at startup, every time, in some binaries and not others. All of them built from the same torch commit.
 
-That's the howtf. Same source. Same fleet. Same device, verifiably there. Whether a binary could see it depended on the binary.
-
 Some context, because the shape of the build matters later. This was at Meta. The binaries were application training binaries composed by Buck, with PyTorch built in-house and statically linked: hermetic builds and fast startup are worth a great deal at that scale, [the exact case Part 1 made for why hyperscalers link statically](/blog/ELF-Linking-101/#61-why-hyperscalers-link-statically).
 
-"Composed by Buck" is doing real work in that sentence, and one fact about it decides this story, so here it is up front. Buck had two strategies for packaging a binary's native code, and the fleet was mid-migration between them. Binaries still on the older **omnibus** strategy hid the bundled verbs symbols. Binaries migrated to **link groups** published them.
+Buck had two strategies for packaging a binary's native code, and the fleet was mid-migration between them. Binaries still on the older **omnibus** strategy hid the bundled verbs symbols. Binaries migrated to **link groups** published them.
 
-The two shapes, briefly. [Omnibus](https://buck.build/javadoc/com/facebook/buck/cxx/Omnibus.html) merges most of a binary's native code (torch and everything under it) "into a single giant shared library," then hides what it merged: the blob is linked behind a version script ending in `local: *;`, localizing every symbol except the exact set the Python-facing roots need. What omnibus swallows, it hides. Meta had written down the hazard of that kind of merge back in [2018](https://engineering.fb.com/2018/01/23/android/android-native-library-merging/), in the Android sibling of this exact machinery: native-library merging "works great, as long as there are no common symbols between the libraries being merged."
+The two shapes, briefly. [Omnibus](https://buck.build/javadoc/com/facebook/buck/cxx/Omnibus.html) merges most of a binary's native code (torch and everything under it) "into a single giant shared library," then hides what it merged: the blob is linked behind a version script ending in `local: *;`, localizing every symbol except the exact set the Python-facing roots need. Meta had written down the hazard of that kind of merge back in [2018](https://engineering.fb.com/2018/01/23/android/android-native-library-merging/), in the Android sibling of this exact machinery: native-library merging "works great, as long as there are no common symbols between the libraries being merged."
 
 But a merged blob at training scale eventually outgrows x86-64's ±2 GiB relocation reach, the same wall [Part 1 hit at the end of its static-linking detour](/blog/ELF-Linking-101/#62-the-consequence-the-2-gib-relocation-barrier). The way past it is [link groups](https://github.com/facebook/buck2/blob/main/prelude/linking/link_groups_explained.md): carve the binary's native dependency graph into several shared libraries, each under the limit. A link group is still a merge, but it lands with the opposite symbol posture. Each group is a genuine shared library, wired to the binary through `DT_NEEDED`, and its boundary symbols are *exported* into the process's dynamic symbol tables so the pieces can find each other at runtime. The full machinery (the version script, the relocation arithmetic, the linker flags, and one public torch casualty) is in [Appendix A](#appendix-a-the-buck-machinery-omnibus-link-groups-and-the-2-gib-wall).
 
@@ -100,7 +99,7 @@ But a merged blob at training scale eventually outgrows x86-64's ±2 GiB relocat
 
 The migration between the two ran application by application: some training binaries still composed as one libomnibus, others already carved into link groups. That matters here for two reasons. First, either composition sweeps the binary's native dependencies into the artifact itself. Among them, in these binaries, was the RDMA user-space stack: libibverbs and the mlx5 provider, the code that enumerates RDMA devices, bundled at build time rather than taken from the host the binary lands on.
 
-Second, the *posture* of that bundled copy (localized inside an omnibus blob, or exported from a link group) depended on which side of the migration a given binary stood. Hold both thoughts; the second is where the opening riddle will find its answer.
+Second, the *posture* of that bundled copy (localized inside an omnibus blob, or exported from a link group) depended on which side of the migration a given binary stood.
 
 Torch was one ingredient; the final artifact was each application's own training binary. And some of those binaries, depending on what they trained on, carried support for MTIA, Meta's own accelerator, served by an in-house collective-communication library newly enabled in the Torch backend. It was that library that pulled the verbs stack into the composition at all.
 
@@ -110,9 +109,9 @@ So: two collective libraries in one process. NCCL/NCCLX for the GPUs, the in-hou
 
 The first guess, always, is hardware. That is what the error says, that is where on-call muscle memory goes, and that is where this one went. We checked the hardware: no issues, everything looked fine. We ran the basic IP and connectivity tests: passed. The device was cabled, enumerated, and reachable, and other binaries were using it happily on the same machine, which cleared the host too.
 
-Then came the fact that snapped the frame. The in-house library, running inside the very same processes, saw the full RDMA device list and worked. So the kernel was serving the device list correctly into the address space where NCCL reported it empty, and the hardware and driver stack were vouched for by a second, working consumer a few shared libraries away. That is the hinge of this whole story: the instant the bug stops being a hardware bug and starts being a linker bug, even though nobody is saying the word "linker" yet.
+The in-house library could enumerate the RDMA devices inside the same process where NCCL found none. That made a hardware-only explanation hard to sustain. We needed to compare how the two consumers reached libibverbs.
 
-One detail about how each consumer reaches the verbs stack turns out to be the whole story. The in-house library was *linked* against the verbs copy bundled into the binary. NCCL in its stock build doesn't link the verbs library at all: it [dlopens `libibverbs` at runtime](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) and takes every entry point from that handle by versioned `dlvsym`, a handle-scoped lookup, the after-`main()` loading machinery from [Part 1's Appendix H](/blog/ELF-Linking-101/#appendix-h-runtime-loading-dlopendlsym).
+The in-house library was *linked* against the verbs copy bundled into the binary. NCCL in its stock build doesn't link the verbs library at all: it [dlopens `libibverbs` at runtime](https://github.com/NVIDIA/nccl/blob/master/src/misc/ibvsymbols.cc) and takes every entry point from that handle by versioned `dlvsym`, a handle-scoped lookup, the after-`main()` loading machinery from [Part 1's Appendix H](/blog/ELF-Linking-101/#appendix-h-runtime-loading-dlopendlsym).
 
 And every one of these binaries came from one torch commit, so the shared code was the same everywhere. Working versus broken didn't track hosts, and it didn't track that shared source. It tracked *binaries*. That doesn't eliminate every difference (two binaries can still diverge in dependencies, configuration, environment), but it aims the suspicion at the step where all of those become bits: how each binary was composed and linked.
 
@@ -169,17 +168,15 @@ And every one of these binaries came from one torch commit, so the shared code w
   </div>
 </figure>
 
-I should be honest about the stakes, because they explain the depth of the eventual dig. This was a SEV, and a recurrence of an earlier SEV that had been mitigated without ever being fully root-caused. The failure had been here before, been made to go away, and come back.
+This was a recurring SEV. An earlier occurrence had been mitigated without a full root cause, and the failure had returned.
 
-Running it to ground this time meant descending through layers that don't usually share a whiteboard: how shared libraries are loaded for a binary, how Python links native extensions, and how the RDMA user-space drivers initialize. The root cause, once it surfaced, fit in a sentence: a symbol collision, from double inclusion of the same shared library.
+The investigation crossed several layers: how shared libraries are loaded for a binary, how Python links native extensions, and how the RDMA user-space drivers initialize. The root cause, once it surfaced, fit in a sentence: a symbol collision, from double inclusion of the same shared library.
 
 Because once we looked inside those binaries, the constructors *had* run. A verbs stack (libibverbs, the mlx5 provider) initialized and registered its devices; the in-house library discovered them and ran happily on top. NCCL's discovery, in the same process, still came back empty. The state that initialization filled and the state that NCCL's discovery read had the same symbol names, and were not the same memory.
 
 ## 3. What was actually happening
 
 > **Four ELF rules this section leans on** (all from [Part 1](/blog/ELF-Linking-101/)). One, the global scope wins a relocation lookup: for a newly loaded object, glibc searches the main program and its startup dependencies before the object's own group. Two, `RTLD_LOCAL` is not a private namespace: it keeps a dlopened library's names out of the global scope, but does not stop that library from seeing global definitions already there. Three, a handle lookup changes the search root: `dlsym`/`dlvsym` on a handle searches that object and its own dependencies, nobody else's. Four, a pointer returned by `dlvsym` is already an address: calling through it triggers no second lookup.
-
-Two things were true at once, and they should not have been. Initialization had run: the verbs stack had walked the device list and written the results into its tables. And NCCL's discovery call, a moment later, found the tables it was reading empty. Both sides were using the same symbol names. They were not reaching the same state.
 
 > **Evidence status.** I no longer have the internal diffs, so the graph below is a best-fit reconstruction, and it is worth being explicit about what rests on what. *Observed* during the incident: the hardware was present, the in-house consumer saw the devices, NCCL did not, and working-versus-broken tracked the binary, not the host or the source. *Verified from public source:* NCCL dlopens verbs and takes its entry points by `dlvsym`, rdma-core keeps a per-instance driver registry, and glibc searches the global scope before a newly loaded object's own dependency group. *Reconstructed:* the bundled registration symbol was exported from a link-group DSO and captured the system provider's registration. *Demonstrated separately:* the two labs in section 4. *Unavailable:* the original failing binary's own binding trace and link map.
 
@@ -201,11 +198,11 @@ The incident reached the same split through a different door: the migration from
 
 Then a binary migrated to link groups, and the bundled verbs changed posture. Carved into a link group, libibverbs stopped being a localized region of a blob and became a genuine shared library whose symbols were exported, default visibility, into the process's global dynamic scope.
 
-Precision matters here, because the naive next sentence ("and they collided with the system copy's identical names") is wrong in an instructive way. The system copy's names never entered the global scope: `dlopen` defaults to `RTLD_LOCAL`, which keeps a loaded library's names out of the global lookup.
+The system copy’s names stayed out of the global scope because it was loaded with `RTLD_LOCAL`. That did not stop its provider from resolving an import against a definition already in the global scope.
 
-A second precision, and it is load-bearing: why did that `dlopen` map a fresh system copy at all, with a verbs stack already resident in the image? Because the loader reuses libraries by *name*, not by contents. `dlopen("libibverbs.so.1")` first walks the objects already loaded, comparing the request against each one's names and `SONAME` ([glibc's `_dl_lookup_map`](https://github.com/bminor/glibc/blob/master/elf/dl-load.c)), and maps a new file only when nothing answers. Had the bundled copy been shipped as a standalone `libibverbs.so.1`, it would have answered: NCCL's `dlopen` would have received the bundled copy, one instance, no split, no bug. But the bundled copy's symbols lived inside a link-group DSO carrying the group's own name. Nothing in the process answered to `libibverbs.so.1`, so the loader mapped the system file, and the image now held two.
+Why did `dlopen` load another copy when the process already contained a verbs stack? Because the loader reuses libraries by *name*, not by contents. `dlopen("libibverbs.so.1")` first walks the objects already loaded, comparing the request against each one's names and `SONAME` ([glibc's `_dl_lookup_map`](https://github.com/bminor/glibc/blob/master/elf/dl-load.c)), and maps a new file only when nothing answers. Had the bundled copy been shipped as a standalone `libibverbs.so.1`, it would have answered: NCCL's `dlopen` would have received the bundled copy, one instance, no split, no bug. But the bundled copy's symbols lived inside a link-group DSO carrying the group's own name. Nothing in the process answered to `libibverbs.so.1`, so the loader mapped the system file, and the image now held two.
 
-That is the ledger to hold for everything that follows. **Copy A**: bundled, exported into the global scope, the in-house library linked to it. **Copy B**: the system copy, dlopened `RTLD_LOCAL`, NCCL pinned to its handle. The surprise, and the whole bug: both providers register into A.
+**Copy A** is bundled with the application and exported into the global scope. The in-house library links to it. **Copy B** is the system copy, loaded with `RTLD_LOCAL`, which NCCL reaches through its handle. Both providers register into A.
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 3 · the two rails: every registration ran left, NCCL read right</span>
@@ -283,9 +280,9 @@ That is the ledger to hold for everything that follows. **Copy A**: bundled, exp
   </div>
 </figure>
 
-Before the scope mechanics, the failure in one plain sentence: the system provider meant to register with the system libibverbs loaded right beside it, and the global-scope lookup sent that registration into the bundled copy instead. Here is how, step by step.
+The system provider’s registration call resolved to bundled copy A, even though system libibverbs was loaded beside the provider. The following lookups explain how that happened.
 
-Neither consumer was ever confused about which instance it was calling. NCCL takes its entry points by `dlvsym` on its own handle, a lookup that sees only that handle's little world, so the pointers NCCL held were pinned to copy B, unreachable by interposition, by construction. The pinning covers the pointers NCCL holds, not the copy itself: copy B's own outward references still resolve like anyone else's, and that is about to matter. The in-house library was equally settled the other way: its verbs references resolved through the global scope to copy A, the only definition on offer there. Two consumers, each faithfully wired to one instance. So far, that is just the omnibus arrangement with the curtain open. The bug needs one more reference, one that has to *cross* between the worlds.
+Neither consumer was ever confused about which instance it was calling. NCCL takes its entry points by `dlvsym` on its own handle, a lookup that sees only that handle's little world, so the pointers NCCL held were pinned to copy B, unreachable by interposition, by construction. The pinning covers the pointers NCCL holds, not the copy itself: copy B's own outward references still resolve like anyone else's, and that is about to matter. The in-house library was equally settled the other way: its verbs references resolved through the global scope to copy A, the only definition on offer there. The remaining reference is the provider’s call to register its driver.
 
 That reference lives in how rdma-core keeps its books. Every instance of libibverbs carries its own file-static state: the device list `ibv_get_device_list()` hands back lives in [a static inside `device.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/device.c), and the driver registry it is built from is [a static `driver_list` inside `init.c`](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/init.c). And rdma-core's [own version script](https://github.com/linux-rdma/rdma-core/blob/master/libibverbs/libibverbs.map.in) marks the machinery around them local, so each instance's discovery is welded to its own tables at link time.
 
@@ -303,15 +300,15 @@ Note what the mechanism does *not* depend on: load order among the consumers. Co
 
 (The stability is a property of this startup topology, mind. A second copy arriving *late*, by an `RTLD_GLOBAL` dlopen mid-run, would not rebind references already resolved. Here there was nothing to rebind: the scope was set before the first constructor fired.)
 
-And that is section 1's riddle solved: same commit, opposite behavior, because binaries still on omnibus carried a hidden copy that captured nothing, and binaries on link groups carried an exported copy that captured every registration. Whether NCCL could see the hardware depended on which side of a build-system migration its binary stood. (The dlopen road is also a preview: it is exactly the runtime-scope machinery that returns in section 7 as Route B.)
+This explains why binaries from the same torch commit behaved differently. Omnibus kept the bundled copy hidden. Link groups exported it, allowing it to capture the provider registrations. Section 7 returns to the separate local scopes as Route B.
 
-That is the whole disease, and it is worth naming in its own right: **split-state linking**, two live copies of one library's state in a single process, with references silently partitioned between them.
+I’ll call this **split-state linking**: two live copies of one library’s state in a process, with references divided between them.
 
 The topology did the capturing; on top of it, two conditions specific to rdma-core still had to hold for the collision to land at all: the copies must agree on rdma-core's private ABI number (it is baked into the registration symbol's name), and symbol versioning must not block the cross-copy match (it does not, for reasons glibc's own source comments on). [Appendix B](#appendix-b-two-preconditions-for-the-capture) walks both.
 
 ## 4. Reproducing it
 
-A claim like that is easy to state and easy to doubt, so here are two reproducers you can run in minutes, no special hardware needed. The first rebuilds section 3's binding topology directly and watches the registration get captured. The second strips the mechanism down to a model and builds the split six ways, to pin down exactly which ingredients produce it.
+The two reproducers need no special hardware. The first rebuilds section 3's binding topology directly and watches the registration get captured. The second strips the mechanism down to a model and builds the split six ways, to pin down exactly which ingredients produce it.
 
 ### The production topology, reproduced
 
@@ -514,7 +511,7 @@ So no diagnostic fires by default, and the opt-in diagnostics that exist each mi
 
 People have run into this before, of course. Sergei Trofimovich wrote up a shared-library collision breaking real programs and landed on the same verdict, that the toolchain does not help much here. What has been missing is the recognition that these one-off war stories are a single failure class with a describable trigger.
 
-A failure that produces a crash gets a stack trace. A failure that produces a wrong answer gets silence.
+The program can keep running with different callers reading different state, so a crash report may never expose the split.
 
 ## 6. Fixes: the folklore one that fails, and the ones that work
 
@@ -537,7 +534,7 @@ FIXES THAT WORK:
   fix-prefix-rename  :   collective: discovered 2 device(s)
 ```
 
-These are not equal in durability. The root-cause fix is one canonical copy, so there is only ever one instance to bind to. Where two copies genuinely must coexist, make them different symbols outright with `objcopy --redefine-sym`, so they can never collide. And a narrower, link-local measure is to stop the executable exporting its static copy: `-Wl,--exclude-libs,libverbs_static.a`, naming the offending archive rather than `-Wl,--exclude-libs,ALL`, which hides every archive's symbols and can suppress plugin or callback exports the process actually needs. The rename fix is not hypothetical. Meta's public [torchcomms repository](https://github.com/meta-pytorch/torchcomms) ships a [`rename_symbols.sh`](https://github.com/meta-pytorch/torchcomms/blob/e01f9bf0b44b37e35425c2250e040fca328557af/rename_symbols.sh) that prefixes every `nccl*` symbol, with a comment saying it exists to avoid conflicting with the OSS `nccl*` bundled with PyTorch. The ecosystem shipped the rename fix years before the disease had a name.
+These are not equal in durability. The root-cause fix is one canonical copy, so there is only ever one instance to bind to. Where two copies genuinely must coexist, make them different symbols outright with `objcopy --redefine-sym`, so they can never collide. And a narrower, link-local measure is to stop the executable exporting its static copy: `-Wl,--exclude-libs,libverbs_static.a`, naming the offending archive rather than `-Wl,--exclude-libs,ALL`, which hides every archive's symbols and can suppress plugin or callback exports the process actually needs. The rename fix is not hypothetical. Meta's public [torchcomms repository](https://github.com/meta-pytorch/torchcomms) ships a [`rename_symbols.sh`](https://github.com/meta-pytorch/torchcomms/blob/e01f9bf0b44b37e35425c2250e040fca328557af/rename_symbols.sh) that prefixes every `nccl*` symbol, with a comment saying it exists to avoid conflicting with the OSS `nccl*` bundled with PyTorch.
 
 In the incident, both rungs got used, in the order SEV pressure dictates. The immediate mitigation was to make the in-house collective library opt-in: binaries that didn't need MTIA stopped pulling the verbs stack into the composition at all, so nothing exported a second copy into the global scope. The provider's registration import, with nothing left to capture it, fell through to the system libibverbs: registration and discovery reunited on the one copy NCCL was pinned to, and NCCL healed. The bug was defused by removing one of the two copies from most processes, not by fixing the collision.
 
@@ -545,7 +542,7 @@ The principled fix came after: statically link libibverbs and libmlx5, one canon
 
 ## 7. How common is this, really?
 
-One of the layers the SEV dig descended through was Python native linking: how the interpreter `dlopen`s extension modules and the libraries bundled alongside them. That detour turns out not to be a detour at all, because the wheel ecosystem lives under the same pressure that built the incident and pushes back the opposite way. The monorepo *merges* (omnibus, link groups, one canonical copy per image) and breaks the day a canonical copy's symbols escape into a scope that already holds the same names, the hazard Meta's 2018 write-up warned about. The wheel ecosystem *vendors* (auditwheel grafts a private copy of every native dependency into each wheel) and breaks the day two of those private copies co-load and each runs its own state. Same pressure, opposite mitigations, one disease.
+One of the layers the SEV dig descended through was Python native linking: how the interpreter `dlopen`s extension modules and the libraries bundled alongside them. That detour turns out not to be a detour at all, because the wheel ecosystem lives under the same pressure that built the incident and pushes back the opposite way. The monorepo *merges* (omnibus, link groups, one canonical copy per image) and breaks the day a canonical copy's symbols escape into a scope that already holds the same names, the hazard Meta's 2018 write-up warned about. The wheel ecosystem *vendors* (auditwheel grafts a private copy of every native dependency into each wheel) and breaks the day two of those private copies co-load and each runs its own state.
 
 The two worlds also differ in route, and the distinction organizes everything measured below, because split-state linking arrives by *two* routes, not one. **Route A (interposition capture)** is the reproducer's shape: a duplicate strong symbol, a self-binding library, and an interposing module sharing one symbol scope. **Route B (scope partition)** needs neither self-binding nor interposition. If two modules are loaded into separate local scopes (`RTLD_LOCAL`, the default for every `dlopen`, which is [how Python loads extension modules](/blog/ELF-Linking-101/#appendix-h-runtime-loading-dlopendlsym)) and each carries its own vendored copy of a library, then each side binds its own copy and runs its own state. Same disease, reached without any special flag at all. The incident stood with one foot in each route: Route A's interposition did the capturing (the registration import, resolved through the global scope into the bundled copy), and Route B's scope machinery did the isolating (the victim pinned by handle to an `RTLD_LOCAL` copy the capture could never fill).
 
@@ -557,7 +554,9 @@ Pointed at the manylinux ML-wheel ecosystem, the picture that comes back is spec
 
 **Route A's exact trigger is absent from public wheels, which is itself the finding.** `DF_SYMBOLIC` is set on zero of the 366 libraries examined, and `symsplit` predicts zero Route A splits across all eight co-load configurations tested. The trigger lives where the incident lived: inside monorepo native-link builds (Buck, Bazel, symbolic-binding hardening, omnibus-to-link-group migrations) that you cannot download from PyPI. That inaccessibility is a good part of why the class went undiagnosed for so long. But the ingredient that *promotes* Route A is one line away in software everyone runs: `import torch` executes `ctypes.CDLL("libtorch_global_deps.so", RTLD_GLOBAL)`, lifting torch's OpenMP into the global scope. An `LD_DEBUG` probe shows the consequence directly: import faiss alone and its extension module's OpenMP references bind faiss's bundled libgomp; import torch first and every one of those traced references rebinds to torch's copy instead. Which copy of a runtime your library gets is decided by Python import order.
 
-The honest shape of the result: the preconditions are everywhere, the full Route A alignment is rare in public and lives behind corporate build systems, and Route B is quietly resident in the stock ML stacks tested here and, by the arithmetic of auditwheel's vendoring, in any process that co-loads two wheels carrying the same runtime. The training binary's disease, one `import` away, and nothing warns at any tier. The ecosystem survives by paying a scattered tax: `KMP_DUPLICATE_LIB_OK`, auditwheel's content-hashed sonames (which *enable* coexisting copies rather than prevent them), torchcomms' `rename_symbols.sh`, conda's one-copy-per-environment discipline. Four patches for one disease, none of them labeled with what they treat.
+The survey found duplicate runtimes and partitioned bindings in the tested ML stacks, while `symsplit` predicted no Route A splits in the tested combinations. The incident’s build topology came from an internal monorepo build.
+
+The ecosystem has several ways of handling related problems. `KMP_DUPLICATE_LIB_OK` suppresses a runtime error. Auditwheel’s content-hashed sonames allow copies to coexist. Torchcomms renames symbols, and conda favors one copy per environment. These approaches act at different points in the loading and linking process.
 
 ## 8. What should change
 
@@ -565,16 +564,15 @@ The diagnostic nobody built already has a name in the record. A `--warn-interpos
 
 That missing ignore-list mechanism is exactly what `symsplit` is. The allowlist for intentional interposers (allocators, sanitizers), the weak/versioned/hidden/symtab-only filtering, the self-binding inference: all of it demonstrated against real binaries, silent across a 788-binary sweep of presumed-clean system binaries. The tool stands alone today; the question worth putting to the linker maintainers, and I intend to, is whether an opt-in, allowlist-first version of the check belongs in lld or ld proper.
 
-Until then, the checklist for anyone shipping large statically-or-mixed-linked binaries. If a dependency is built `-Bsymbolic` or `-Bsymbolic-functions`, and a strong C symbol it defines also exists anywhere else in your image, you have a latent split-state hazard (it fires when the duplicated symbol guards state and both copies end up live in the same scope), and no default tool will flag it. Scan for it. Prefer one canonical copy, or make the copies different symbols outright. And file the lesson somewhere it will be found at 2 a.m.: `No IB devices found` can mean the devices are right there — enumerated, registered, waiting — in the copy of the world you didn't ask.
+Until then, the checklist for anyone shipping large statically-or-mixed-linked binaries. If a dependency is built `-Bsymbolic` or `-Bsymbolic-functions`, and a strong C symbol it defines also exists anywhere else in your image, you have a latent split-state hazard (it fires when the duplicated symbol guards state and both copies end up live in the same scope), and no default tool will flag it. Scan for it. Prefer one canonical copy, or make the copies different symbols outright. For this failure, `No IB devices found` meant that registration had filled a different library instance from the one NCCL queried.
 
 ---
 
 *Reproducer, scanner, and survey artifacts: [the reproducer repo](https://github.com/dshah133/howtf/tree/main/demo/rdma-symbol-collision) (scanner at [`tools/symsplit`](https://github.com/dshah133/howtf/tree/main/tools/symsplit)). Everything quoted above (the scope-capture bindings, the address matrix, the fix ladder, the sweep, the wheel survey) is a captured artifact in the repo, rerunnable from scripts.*
 
-
 ## Appendices
 
-Evidence lockers: the full dumps and gnarlier details the body text points at. Skip freely; return when a claim needs its receipts.
+The appendices contain the build details, complete results, and scanner limitations referenced above.
 
 ### Appendix A: The Buck machinery (omnibus, link groups, and the 2 GiB wall)
 

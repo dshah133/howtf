@@ -2,17 +2,16 @@
 title: "howtf did the training job hang after the training was done?"
 description: "An NCCL 2.17.1 deep dive: an abort path waiting for a peer-visible close, a file descriptor duplicated by fork(), and the shutdown() that 2.18.1 added."
 date: 2026-08-18
+updated: 2026-09-05
 tags: [nccl, pytorch, linux, tcp, fork, sockets]
 draft: false
 ---
 
 ## 1. The job that wouldn't die
 
-The training was fine. That was the problem.
+Training finished, the last checkpoint reached disk, and every training-step collective produced the right answer. Then, some evenings, the job stayed alive with idle GPUs and no error or exit code. An external watchdog eventually killed it. Until then it occupied a cluster slot, often enough to become a recurring SEV.
 
-Loss curves converged, the last checkpoint landed on disk, every training-step collective completed and produced the right answer. And then, some evenings, the job just sat there. GPUs idle, no error, no crash, no exit code. A cluster slot burning until an external watchdog reaped the whole thing, often enough to become a recurring SEV.
-
-A hang in production is, in principle, a solved diagnostic problem: there is telemetry everywhere, you can snapshot a machine, you can trace a process. In practice the first hard question is not *why* something is hung but *who*. A single training host is a small zoo:
+We first had to identify which process was preventing the job from exiting. A snapshot of one training host contained several candidates:
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 1 · one training host, many suspects</span>
@@ -62,9 +61,9 @@ A hang in production is, in principle, a solved diagnostic problem: there is tel
 
 Multiply by every host. "The job is hung" ranges over hundreds of processes, most of which are *supposed* to be waiting for something. So the first real work was elimination: walk the snapshots, find the thread that should be making progress and isn't. Training threads: done. Dataloaders: idle, waiting for a next-batch request. Checkpointing: finished.
 
-The thread that should have been making progress, and wasn't, was inside NCCL. Not in a collective. In *teardown*.
+The thread that should have been making progress was inside NCCL teardown.
 
-> **Scope note.** This article separates production observations from mechanism reconstruction. The captured stacks and process state place the hang in NCCL's teardown; the NCCL 2.17.1 source, Linux descriptor semantics, and the 2.18.1 patch establish the duplicated-descriptor mechanism. Those claims are checked against pinned tags ([v2.17.1-1](https://github.com/NVIDIA/nccl/tree/v2.17.1-1), [v2.18.1-1](https://github.com/NVIDIA/nccl/tree/v2.18.1-1), [diff](https://github.com/NVIDIA/nccl/compare/v2.17.1-1...v2.18.1-1)) and, where it mattered, re-tested on a live kernel. The surviving evidence does *not* conclusively identify which forked helper retained the descriptor in our incident, or which timeout first sent PyTorch into its abort path; those incident-specific details are labeled as reconstruction below. The fix ships in 2.18.1 with a source comment that reads like this article's abstract. Hold that thought for §8.
+> **Scope note.** This article separates production observations from mechanism reconstruction. The captured stacks and process state place the hang in NCCL's teardown; the NCCL 2.17.1 source, Linux descriptor semantics, and the 2.18.1 patch establish the duplicated-descriptor mechanism. Those claims are checked against pinned tags ([v2.17.1-1](https://github.com/NVIDIA/nccl/tree/v2.17.1-1), [v2.18.1-1](https://github.com/NVIDIA/nccl/tree/v2.18.1-1), [diff](https://github.com/NVIDIA/nccl/compare/v2.17.1-1...v2.18.1-1)) and, where it mattered, re-tested on a live kernel. The surviving evidence does *not* conclusively identify which forked helper retained the descriptor in our incident, or which timeout first sent PyTorch into its abort path; those incident-specific details are labeled as reconstruction below. Section 8 shows the fix in NCCL 2.18.1 and its source comment.
 
 ## 2. The thread that was "idle"
 
@@ -86,7 +85,7 @@ Two observations before reading a line of NCCL code.
 
 **Nobody wrote `ncclCommAbort` in the training script.** The caller is PyTorch: `ProcessGroupNCCL`'s error-handling path walks the map of live communicators and aborts each. The walk PyTorch ≥ 2.1 names [`abortCommsFromMap`](https://github.com/pytorch/pytorch/blob/v2.1.0/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp#L850); 2.0-era sources spell the same role differently. A common driver is the watchdog thread reacting to a collective timeout or an async error. Which timeout first sent *our* job down this path is reconstruction (by the time we captured it, the abort was already in flight) but the entry point is not: the thing that hangs is the *fault-handling* path, the code whose entire reason to exist is to get out unconditionally. The escape hatch jammed.
 
-(Two cautions about that silhouette, in the interest of honesty. First, it is *nonspecific*: #992 was reported on 2.18.1, *after* the fix this article ends with, so the stack alone does not identify a mechanism. It tells you where teardown waits, not why; the why takes the rest of this article. Second, its `c10d` frame names are version-sensitive: `abortCommsFromMap` is absent from PyTorch v2.0.1 and present by v2.1.0, while the frames *below* the c10d layer are the ones our capture pinned, so the public c10d spelling is no evidence of our incident's PyTorch version. An affected-era report closer to ours is [#863](https://github.com/NVIDIA/nccl/issues/863): `ncclCommAbort` hanging in a process-exit test after upgrading to 2.16.5.)
+(Two limits on what this stack tells us. First, it is *nonspecific*: #992 was reported on 2.18.1, *after* the fix this article ends with, so the stack alone does not identify a mechanism. It tells you where teardown waits, not why; the why takes the rest of this article. Second, its `c10d` frame names are version-sensitive: `abortCommsFromMap` is absent from PyTorch v2.0.1 and present by v2.1.0, while the frames *below* the c10d layer are the ones our capture pinned, so the public c10d spelling is no evidence of our incident's PyTorch version. An affected-era report closer to ours is [#863](https://github.com/NVIDIA/nccl/issues/863): `ncclCommAbort` hanging in a process-exit test after upgrading to 2.16.5.)
 
 **The bottom frame is not the network and not CUDA.** Chase it into NCCL 2.17.1 and the parked call is a `pthread_join`: the first substantive cleanup step in [`commFree`](https://github.com/NVIDIA/nccl/blob/v2.17.1-1/src/init.cc#L169-L178) is to wait for the communicator's proxy service thread to exit.
 
@@ -100,7 +99,7 @@ static ncclResult_t commFree(ncclComm_t comm) {
     pthread_join(comm->proxyState.thread, nullptr);
 ```
 
-That reframes the investigation. The hung thread is only a *mourner*: it waits for another thread of its own process. The real question is what the **service thread** is waiting for. Here the snapshots wrong-foot you, because the service thread does not look stuck at all. It is awake, waking from `poll()` (at most every 500 ms in its quiescent state), checking its exit condition, finding it unmet, and going back to sleep. Nothing on the host is blocked in the classic sense. The job is hung on an *absence*.
+The thread in `pthread_join` is waiting for the proxy service thread to exit. The service thread keeps checking its exit condition and returning to `poll()`. When idle, its `poll()` timeout is 500 ms.
 
 To see what event it wants, you need to know what sockets NCCL owns. NCCL owns more TCP than its reputation suggests.
 
@@ -179,7 +178,7 @@ Every rank that has completed `ncclCommInitRank`, whatever its data plane later 
 
 (One honesty note on the diagram: `fork()` copies the *whole* table — the child also inherits the accepted endpoint, the listener, and every other open NCCL descriptor. The diagram shows only the client-end alias because that is the one whose final release controls whether the service side ever sees EOF.)
 
-This correction makes the bug *more* interesting, not less. You do not need seven peers or even two. You need **one counted connection** — and the common shape is a rank holding both ends of it, with a child process about to matter enormously.
+Even one counted connection can produce this hang. In the common case, the rank holds both ends of a TCP connection, and a child can inherit a descriptor for it.
 
 ## 4. Teardown in 2.17.1: a protocol narrowed to one exit
 
@@ -198,9 +197,9 @@ This correction makes the bug *more* interesting, not less. You do not need seve
       ret = poll(pollfds, NCCL_MAX_LOCAL_RANKS+1, asyncOpCount ? 0 : 500);
 ```
 
-The abort flag gets the thread to `stop = 1`, but not out the door. It refuses to exit while `npeers > 0`, and its comment explains why: leave while a client might still send a request and you're a use-after-free. Defensible, even careful.
+The abort flag sets `stop = 1`, but the service loop can still keep running. It refuses to exit while `npeers > 0`, and its comment explains why: leave while a client might still send a request and you're a use-after-free.
 
-So `npeers` is the ballgame. Reading [the rest of the loop](https://github.com/NVIDIA/nccl/blob/v2.17.1-1/src/proxy.cc#L1440-L1502), an accepted connection is retired (`closeConn = 1`, `npeers--`) in four broad classes of event: an explicit `ncclProxyMsgStop`/`ncclProxyMsgClose` message; EOF (`recv()` returning 0 — a peer-visible close arrived); `POLLHUP` or a socket error; or a request failing mid-progress. Messages and closes, politeness and noise.
+The next question is what decrements `npeers`. Reading [the rest of the loop](https://github.com/NVIDIA/nccl/blob/v2.17.1-1/src/proxy.cc#L1440-L1502), an accepted connection is retired (`closeConn = 1`, `npeers--`) in four broad classes of event: an explicit `ncclProxyMsgStop`/`ncclProxyMsgClose` message; EOF (`recv()` returning 0 — a peer-visible close arrived); `POLLHUP` or a socket error; or a request failing mid-progress.
 
 Now the asymmetry that decides the incident, in [`ncclProxyDestroy`](https://github.com/NVIDIA/nccl/blob/v2.17.1-1/src/proxy.cc#L1532-L1561):
 
@@ -228,7 +227,7 @@ ncclResult_t ncclSocketClose(struct ncclSocket* sock) {
     ...
 ```
 
-And that assumption is where the kernel gets a vote.
+Whether that call notifies the peer depends on who else holds a reference to the socket.
 
 ## 5. What close() actually promises
 
@@ -363,13 +362,13 @@ Now assemble it, in its common direct-P2P shape, which is also its strangest: **
   </div>
 </figure>
 
-Two threads of one process, connected to each other through the kernel's TCP stack, deadlocked by the fd table of a *third* process that appears in no interesting stack trace — a forked helper, idle and healthy, incidentally clutching a duplicate of the client end it will never use. In our incident the natural suspects were the dataloader workers; NVIDIA's fix comment (§8) names `fork()` generically, and our surviving evidence doesn't pin which forked helper it was, so treat the worker attribution as reconstruction. The mechanism doesn't care which child it was. Only that one existed.
+Two threads of one process, connected to each other through the kernel's TCP stack, deadlocked by the fd table of a *third* process that appears in no interesting stack trace — a forked helper, idle and healthy, incidentally clutching a duplicate of the client end it will never use. In our incident the natural suspects were the dataloader workers; NVIDIA's fix comment (§8) names `fork()` generically, and our surviving evidence doesn't pin which forked helper it was, so treat the worker attribution as reconstruction. Any child retaining the client-end descriptor could cause the same delay.
 
 The cross-rank variant exists too: where topology selected another local rank's proxy (indirect P2P, PXN, NVLS), rank B's withheld close wedges rank *A*'s service thread — one rank's children holding another rank's teardown hostage. And a nuance about process death: a *generic* forked helper can even outlive its parent while pinning the socket (§9 demonstrates exactly that), but stock PyTorch DataLoader workers are daemonic with parent-death machinery ([`w.daemon = True`](https://github.com/pytorch/pytorch/blob/v2.0.1/torch/utils/data/dataloader.py#L1035), [`ManagerWatchdog`](https://github.com/pytorch/pytorch/blob/v2.0.1/torch/utils/data/_utils/worker.py#L51) polling `getppid()`). The production-relevant state is the subtler one: the rank is *alive but hung inside abort*, so its workers see a living parent, keep waiting for batches politely — and keep holding.
 
 ## 7. Why it looked random
 
-Once you hold the mechanism, the intermittency stops being spooky. The hang requires a strict ordering across four events, plus a mode:
+The hang requires the following ordering, on the abort path:
 
 ```text title="the gates"
   proxy socket opened  <  child forked  <  abort-path close()  <  child releases its fd
@@ -386,9 +385,9 @@ Each inequality is a gate:
 
 **Multiplier.** Every initialized communicator — and a subgrouped job has many — owns its own service thread and whatever proxy connections its transport setup has lazily created, each an independent instance of the race, with abort *ordering* across communicators adding failure modes of its own (a post-fix sibling: [#1013](https://github.com/NVIDIA/nccl/issues/1013), a single-node, four-rank hang that appears and disappears with the order of two `_abort()` calls).
 
-**An explanation I had to delete.** An earlier draft of this article claimed a rescue gate: unread bytes at `close()` cause TCP to send RST instead of FIN, abruptly waking the peer — so busy teardowns escaped and quiescent ones hung. Tidy, and wrong. The RST-vs-FIN decision happens during the socket's *final-close processing*, and the entire premise of this bug is that the parent's `close()` **is not the final close** — it's an alias decrement that never reaches TCP at all. I tested the adversarial case (unread byte queued, helper holding the fd): the parent's close produced nothing on the peer; only the helper's exit did — as `ECONNRESET`, the unread data changing the *final*-close event, not its timing. The corrected rule: **a non-final `close()` produces no close-related, peer-visible TCP event.**
+**An explanation I had to delete.** An earlier draft of this article claimed a rescue gate: unread bytes at `close()` cause TCP to send RST instead of FIN, abruptly waking the peer — so busy teardowns escaped and quiescent ones hung. The RST-vs-FIN decision happens during the socket's *final-close processing*, and the entire premise of this bug is that the parent's `close()` **is not the final close** — it's an alias decrement that never reaches TCP at all. I tested the adversarial case (unread byte queued, helper holding the fd): the parent's close produced nothing on the peer; only the helper's exit did — as `ECONNRESET`, the unread data changing the *final*-close event, not its timing. The corrected rule: **a non-final `close()` produces no close-related, peer-visible TCP event.**
 
-And the question I also got wrong on the first pass, so it gets its own line: **does this need multiple nodes? No.** The common vulnerable connection is a rank's TCP *self*-connection — it exists on one box, between one process's own threads, and descriptor semantics do not care that both endpoints share a kernel. A single-node NVLink job with a post-setup `fork()` and an abort at exit checks every gate.
+I also initially thought this required multiple nodes. It can happen on one machine. The common vulnerable connection is a rank's TCP *self*-connection — it exists on one box, between one process's own threads, and descriptor semantics do not care that both endpoints share a kernel. A single-node NVLink job with a post-setup `fork()` and an abort at exit checks every gate.
 
 ## 8. The fix: one syscall in 2.18.1
 
@@ -457,7 +456,7 @@ Scope the versions honestly: the broken-close behavior is what I verified at v2.
 
 ## 9. Reproducing it, no GPUs required
 
-Strip away CUDA and the fleet and the incident is three parties and two syscalls — small enough for [~180 lines of C](https://github.com/dshah133/howtf/tree/main/demo/nccl-teardown-fin). One honest disclaimer first: **this is a Linux socket-lifetime reproducer, not an NCCL execution reproducer.** It implements the liveness-critical *reduction* of the 2.17.1 service loop — abort already observed, one connection counted, no application-level Close coming — and proves the duplicated-descriptor delay and the effect of the 2.18.1 change. It does not model the production trigger, the fd holder's identity, or NCCL's real topology. (`svc` and `rank` are also separate processes here purely to isolate the kernel mechanism; §6's common NCCL shape puts both ends in one process.)
+Strip away CUDA and the fleet and the incident is three parties and two syscalls — small enough for [~180 lines of C](https://github.com/dshah133/howtf/tree/main/demo/nccl-teardown-fin). This reproducer exercises Linux socket lifetime. It does not execute NCCL. It implements the liveness-critical *reduction* of the 2.17.1 service loop — abort already observed, one connection counted, no application-level Close coming — and proves the duplicated-descriptor delay and the effect of the 2.18.1 change. It does not model the production trigger, the fd holder's identity, or NCCL's real topology. (`svc` and `rank` are also separate processes here purely to isolate the kernel mechanism; §6's common NCCL shape puts both ends in one process.)
 
 ```shellsession title="./teardown-hang — abridged representative run (early lines can interleave; routine lines omitted)"
 == experiment 1 · teardown with close() only            (NCCL 2.17.1 behavior) ==
@@ -475,7 +474,7 @@ svc:    EOF (recv() == 0) — a peer-visible close arrived. npeers-- -> 0  [t=3.
 svc:    service loop exits; pthread_join would return; ncclCommAbort completes  [t=3.70s]
 ```
 
-Read the timestamps: `close()` at **t=0.30**, the rank process dead at t=0.30, the peer notified at **t=3.70** — the moment the helper dropped the last alias. In between, the demo samples the kernel's own table: both loopback endpoints `ESTABLISHED`, more than a second after the closing process ceased to exist. The close was never lost; it was *scheduled by an unrelated process's lifetime*.
+Read the timestamps: `close()` at **t=0.30**, the rank process dead at t=0.30, the peer notified at **t=3.70** — the moment the helper dropped the last alias. In between, the demo samples the kernel's own table: both loopback endpoints `ESTABLISHED`, more than a second after the closing process ceased to exist.
 
 ```shellsession title="experiment 2, same fork, same two aliases"
 == experiment 2 · teardown with shutdown() then close() (NCCL 2.18.1 behavior) ==
@@ -493,19 +492,13 @@ Same fork, same two aliases — and the close is peer-visible within the demo's 
 
 **`close()` is not a message.** It is a release of one descriptor alias that *sometimes* has wire side effects. If your protocol's liveness depends on the peer observing your departure, perform the observable event explicitly — `shutdown()` before `close()` — and keep timeouts and error paths anyway: no protocol should depend on any peer signal arriving unconditionally.
 
-**Abort paths must not require politeness from the dead — or the living.** The graceful path here had two exits (a message or an observable close); the abort path silently narrowed to one, and nobody re-derived liveness under the narrowing. When you strip an escape path down for safety, re-ask: what is the minimum signal that still gets everyone out, and can any bystander withhold it?
+**Check what can still let an abort finish.** The graceful path here had two exits (a message or an observable close); the abort path silently narrowed to one, and nobody re-derived liveness under the narrowing. When you strip an escape path down for safety, re-ask: what is the minimum signal that still gets everyone out, and can any bystander withhold it?
 
 **fd inheritance is part of your interface.** `fork()` couples your subprocess topology to your network protocol's correctness through the descriptor table. `SOCK_CLOEXEC` is necessary hygiene for the exec case and does nothing for fork-only workers — for those, the defenses are start methods that don't inherit, forking before long-lived sockets exist, closing unrelated descriptors in the child, or (best) protocol liveness that doesn't depend on final release at all.
 
 **The unit you operate on is not the unit the kernel acts on.** You closed a *descriptor*; the observable close belonged to the *shared socket* behind it. The same shape as bytes-versus-pages in [the previous NCCL story on this site](/blog/four-bytes-one-page/): the API's noun and the kernel's noun differ by one level of indirection, and the bug lives in the gap.
 
-## Epilogue
-
-Every local decision in this incident was reasonable. The service thread refused to exit while connections stood open, because exiting early is a use-after-free — its comment says so. The abort path skipped the goodbye messages, because an aborting rank must not block on endpoints that may be gone. The helper held the socket because `fork()` hands children the whole table and nobody told them otherwise. And `close()` kept its actual contract — release one alias, close the connection when the aliases are gone — rather than the contract everyone remembered it having.
-
-The contracts did not compose. A teardown whose only abort-path exit was an observable close met a syscall that only sometimes produces one, in a process tree that routinely duplicated the deciding alias into children that would never look at it. Training finished perfectly, every evening. Then, some evenings, the exit door was held shut by an inherited descriptor in a child process that would never use it.
-
-The fix is one syscall and a four-line comment that reads like this post's abstract. And `fork()`, for the second story running, turns out to be the villain — last time it withheld a page from the children; this time a child withheld the close from everyone else. I am starting to keep a file.
+<div id="epilogue"></div>
 
 ---
 

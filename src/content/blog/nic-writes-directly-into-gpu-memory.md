@@ -2,6 +2,7 @@
 title: "howtf does a NIC write directly into GPU memory?"
 description: "A ground-up walk through DMA, RDMA, PCIe BARs, memory registration, MKeys, nvidia-peermem, and DMA-BUF. Part 1 of Memory Registration, All the Way Down."
 date: 2026-08-20
+updated: 2026-09-05
 series:
   name: "Memory Registration, All the Way Down"
   part: 1
@@ -17,13 +18,9 @@ Call to ibv_reg_mr_iova2 failed with error Cannot allocate memory
 
 The `ibv` prefix comes from **InfiniBand Verbs**, the userspace programming interface exposed by `libibverbs`. The same verbs model is also used by ConnectX adapters carrying RoCE; “verbs” names the programming interface, not necessarily the wire protocol.
 
-It was ordinary enough that the first searches led to the standard list: locked-memory limits, BAR1 exhaustion, driver mismatches, too many registered regions, an unhealthy network adapter. All reasonable. None explains what the machine was actually trying to construct when that call failed.
+The first searches led to familiar suspects: locked-memory limits, BAR1 exhaustion, driver mismatches, too many registered regions, and an unhealthy adapter. To distinguish them, we needed to understand what registration builds.
 
-Before following the failure, we need that construction in our heads.
-
-What does it mean to “register” memory with a NIC? Which address does the NIC use? How does a CPU virtual address become a table inside a ConnectX adapter? Why does GPU memory involve BAR1? What does the NVIDIA driver do during registration, and what does it *not* do when the actual network write arrives?
-
-This post builds that path from the bottom up. The [production failure](/blog/gpu-registration-failure-from-host-ram/) comes in Part 2. The [Linux pinning conflict underneath it](/blog/pinned-memory-still-needs-to-move/) comes in Part 3.
+We’ll follow the address translations from a userspace buffer to the RNIC and GPU. The [production failure](/blog/gpu-registration-failure-from-host-ram/) comes in Part 2, followed by the [Linux pinning conflict](/blog/pinned-memory-still-needs-to-move/) in Part 3.
 
 > **Scope note.** The hardware model here is an NVIDIA H100-class GPU and a ConnectX-7-class RDMA NIC on Linux. The interfaces are verified against the public NVIDIA Collective Communications Library (NCCL), rdma-core, Linux’s `mlx5` ConnectX driver, and NVIDIA driver source. Hardware implementations change, so names such as MTT and PAS should be read as the concrete mlx5 form of a more general idea: a device-side translation from an address in a memory region to DMA-reachable pages.
 
@@ -151,11 +148,7 @@ A posts an RDMA-write work request containing its local source buffer and B’s 
 
 The remote CPU does not copy the payload. It may have participated earlier—creating the queue pair, registering memory, exchanging metadata—but the data can arrive without a receive-side system call for every transfer. The registration mechanism described here is shared by InfiniBand and RDMA over Converged Ethernet (RoCE), even though their network transports differ.
 
-That is the useful one-sentence definition:
-
 > **RDMA lets a remote peer cause a local NIC to perform DMA against memory that was registered in advance.**
-
-The phrase “registered in advance” contains most of this series.
 
 ---
 
@@ -236,9 +229,7 @@ A simplified machine-wide map might look like this:
   </div>
 </figure>
 
-The exact addresses differ by machine. The important point is that devices own windows in an address domain that PCIe transactions can target.
-
-How are those windows established? Through PCI configuration space and Base Address Registers.
+The addresses differ by machine, but the routing depends on address windows assigned to devices. PCI configuration space and Base Address Registers describe those windows.
 
 ---
 
@@ -246,7 +237,7 @@ How are those windows established? Through PCI configuration space and Base Addr
 
 Every PCIe function exposes configuration space. Among the standard fields are up to six Base Address Registers: BAR0 through BAR5.
 
-Despite the name, a BAR is not a giant array of device data stored inside the register. It is a compact description of an address window the device needs.
+A BAR describes an address window the device needs. The register stores the window’s configuration, rather than the data accessed through it.
 
 At enumeration, firmware or the operating system performs a sizing exchange with the device, reserves an appropriately sized region in the host/PCI address map, and writes the chosen base address into the BAR. Linux then records that region as a PCI resource. Drivers can claim and map it.
 
@@ -272,7 +263,7 @@ BAR1   aperture through which framebuffer memory can be reached
 
 BAR0 lets software interact with the device’s control machinery. BAR1 makes selected GPU framebuffer pages visible in the PCIe address space so a CPU or peer device can access them. NVIDIA’s NVML documentation describes BAR1 as the mapping used for direct CPU or third-party-device access to framebuffer memory.
 
-The word **aperture** matters. BAR1 is not another copy of VRAM. It is an address window through which the GPU exposes framebuffer mappings.
+BAR1 is an address window through which the GPU exposes framebuffer mappings. It does not hold a second copy of VRAM.
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 3 · BAR1 is an aperture, not a second copy of VRAM</span>
@@ -352,7 +343,7 @@ For this path, hold at least five different kinds of address:
 5. MR IOVA: the address the RNIC exposes through the memory key
 ```
 
-They can sometimes have the same numeric value. That does not make them the same concept.
+These addresses can have the same numeric value even though they belong to different address spaces.
 
 ### CPU process virtual address
 
@@ -412,7 +403,7 @@ That distinction lets an application register one userspace range while presenti
 
 ## 6. What memory registration actually builds
 
-A memory region is not just a “pinned” flag attached to a pointer. Registration creates a capability and a translation object inside the RDMA stack and RNIC.
+Registration creates both access permissions and a translation object inside the RDMA stack and RNIC. Pinning the backing pages is one part of that work.
 
 Conceptually:
 
@@ -520,7 +511,7 @@ The RNIC does **not** consult the CPU page table on every packet. Registration r
   </div>
 </figure>
 
-That second path is why memory lifetime matters. If Linux moved the physical page while the RNIC still held the old translation, the next packet would DMA into the wrong place.
+If Linux moved a backing page while the RNIC retained the old translation, the next packet would DMA into the wrong location. Registration therefore has to keep that mapping valid for as long as the device can use it.
 
 ---
 
@@ -657,8 +648,6 @@ The whole path is:
   </div>
 </figure>
 
-Registration succeeds only after every layer agrees that the mapping can remain valid.
-
 ---
 
 ## 8. Why GPU memory needs a broker
@@ -718,7 +707,7 @@ The driver also has an invalidation story: if the CUDA allocation is freed or it
 
 `nvidia_p2p_dma_map_pages()` takes the requesting PCI device—the ConnectX RNIC—and maps the GPU pages into addresses usable by that device.
 
-That device argument is load-bearing. The correct output is not a universal “GPU physical address.” It is a DMA mapping for a particular peer.
+The mapping must be valid for the requesting RNIC. A different peer device may need a different DMA address for the same GPU memory.
 
 ### 9.3 Hand the mappings to mlx5
 
@@ -784,7 +773,7 @@ mlx5 MKey
 
 The NVIDIA driver remains responsible for the GPU allocation and its peer mapping. DMA-BUF does not remove the GPU driver; it replaces the special peer-memory-client handshake with a standard exporter/importer lifetime model.
 
-That is a major architectural improvement:
+The ownership and lifetime handling change as follows:
 
 ```text
 legacy:
@@ -800,13 +789,13 @@ It also gives the kernel a standard place for attachment, reservation fences, in
 
 DMA-BUF only applies to buffers that are exported through it. In stock NCCL 2.17, CUDA protocol buffers may take the DMA-BUF path, while host buffers continue through ordinary `ibv_reg_mr_iova2()`.
 
-This distinction becomes the hinge of Part 2.
+Part 2 follows a failure in that ordinary host-memory path.
 
 ---
 
 ## 11. One RDMA write, all the way to VRAM
 
-We can finally trace one remote write without skipping a layer.
+We can now follow a remote write into a registered GPU buffer.
 
 Assume machine B has registered a GPU receive buffer and sent its address and `rkey` to machine A.
 
@@ -923,11 +912,7 @@ For a GPU MR, the DMA address targets the peer-visible GPU aperture. The RNIC be
 
 Transport completion and GPU visibility are related but not identical. PCIe posted writes, GPU cache/coherency rules, and CUDA synchronization determine when a GPU kernel may safely consume the new bytes. NCCL and CUDA contain explicit ordering mechanisms for this boundary.
 
-The important negative statement is:
-
-> The CPU does not ask the NVIDIA driver to translate every arriving packet.
-
-The drivers did their work during registration. The fast path uses the RNIC’s MKey and the PCIe mappings already established.
+The drivers establish the translations during registration. Each arriving packet uses the RNIC’s MKey and existing PCIe mappings, without asking the NVIDIA driver to translate it again.
 
 ---
 
@@ -966,13 +951,13 @@ provider bookkeeping failure
 
 The top-level NCCL line does not preserve which one happened.
 
-That was the first problem in the production incident: the error named the API boundary, not the failed contract.
+We still needed to find which step had returned the error in production.
 
 ---
 
 ## 13. The machine model to carry forward
 
-The whole post compresses into three registrations.
+The three registration paths differ in how they obtain the backing memory:
 
 ### Ordinary host memory
 

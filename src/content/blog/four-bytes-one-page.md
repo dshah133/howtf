@@ -2,23 +2,20 @@
 title: "howtf did a four-byte buffer crash the checkpoint worker?"
 description: "An RDMA deep dive: a GPUDirect visibility fence registered four bytes of host memory, and forked children started segfaulting on pointers the parent could read fine. The page-granular fork rule hiding under ibv_reg_mr()."
 date: 2026-08-09
+updated: 2026-09-05
 tags: [rdma, gpudirect, linux, fork, memory]
 draft: false
 ---
 
 ## 1. The crash was in the wrong process
 
-The first crash was in checkpointing. That was the problem.
+We had just changed the receive side of a collective-communications transport. It registered four bytes of host memory as scratch for a GPUDirect RDMA visibility fence. Focused tests passed, collectives produced the right answers, and performance looked normal.
 
-We had just changed a network transport: the receive side of a collective-communications library. The change registered four bytes of host memory and used them as scratch for a GPUDirect RDMA visibility fence. Focused tests passed. Collectives produced the right answers. Performance looked normal. The new object was so small it barely felt like an allocation.
+Then production training jobs started crashing in checkpointing and data loading. Stack traces pointed into serialization, input processing, and allocator code. Rebuilding the same source could make a crash disappear or move it somewhere else.
 
-Then production training jobs began dying in code that had nothing to do with networking. Sometimes a checkpoint worker crashed walking metadata. Sometimes a data-loading child faulted dereferencing an object that was demonstrably valid in the parent. Stack traces pointed into serialization, input processing, allocator internals. The main training process ran on fine, which made the failures look stochastic. Rebuilding the same source could make a crash disappear, or move it somewhere else.
+Every victim was a child created with `fork()`. The parent could still read the same address that faulted in the child. That was the clue that connected the crashes to the transport change.
 
-The useful clue was not the faulting instruction. It was the process boundary. Every victim was a child created with `fork()`. The same pointer, the same virtual address: readable in the parent, a segfault in the child.
-
-That's the howtf. Memory that survived in the parent and did not exist in the child, delivered by a four-byte change on the other side of the codebase. The feature was measured in bytes. Its side effect was measured in pages.
-
-> **Scope note.** This reconstructs a production incident from first-hand experience, with products, hardware generations, and deployment details deliberately blurred. Every mechanism claim is checked against public source: NVIDIA's NCCL, rdma-core, and the Linux kernel, linked throughout. The public NCCL commit used below as the reference design also already contains the defense this post ends with. Hold that thought for §8.
+> **Scope note.** This reconstructs a production incident from first-hand experience, with products, hardware generations, and deployment details deliberately blurred. Every mechanism claim is checked against public source: NVIDIA's NCCL, rdma-core, and the Linux kernel, linked throughout. The public NCCL reference already includes the allocation fix described in §8.
 
 ## 2. Two kinds of done
 
@@ -26,7 +23,7 @@ The receive path used GPUDirect RDMA: the NIC (an RNIC, an RDMA-capable NIC) wri
 
 It is tempting to collapse every notion of "done" into one completion bit. On this path that is unsafe. NVIDIA's [GPUDirect documentation](https://docs.nvidia.com/cuda/gpudirect-rdma/#synchronization-and-memory-ordering) says it directly: even after a third-party device has issued its PCIe writes, a concurrently running GPU kernel can observe stale or partially written data. The DMA write has to be made visible to the scope that will consume it, which is why modern CUDA exposes [`cuFlushGPUDirectRDMAWrites()`](https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html) as an explicit operation. Transport completion and GPU visibility are two different claims.
 
-The historical NCCL InfiniBand transport, the public skeleton of this design (and a returning character on this site: [it last lost its device list to the linker](/blog/split-state-linking/)), answers both. For transport completion: the receiver posts a receive work request that is really a notification credit, then advertises the GPU destination address, rkey, and size to the sender [through a FIFO](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L663-L671). The sender posts [`IBV_WR_RDMA_WRITE_WITH_IMM`](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L639-L642): the write lands the payload one-sided in GPU memory, and the immediate consumes the receiver's credit, generating a completion whose `imm_data` [carries the message size](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L783-L784).
+The historical NCCL InfiniBand transport handles both completion and GPU visibility. It is also the transport discussed in [the earlier linking incident](/blog/split-state-linking/). For transport completion: the receiver posts a receive work request that is really a notification credit, then advertises the GPU destination address, rkey, and size to the sender [through a FIFO](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L663-L671). The sender posts [`IBV_WR_RDMA_WRITE_WITH_IMM`](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L639-L642): the write lands the payload one-sided in GPU memory, and the immediate consumes the receiver's credit, generating a completion whose `imm_data` [carries the message size](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L783-L784).
 
 For GPU visibility: after that completion, the receiver posts a signaled `IBV_WR_RDMA_READ` on [a small QP connected back to itself](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L496-L506). The read's remote side is the GPU receive buffer. Its local destination is a tiny registered host object. The value read does not matter. An RDMA read is a non-posted operation that cannot complete until its response comes back, and on this platform that response was the ordering point: the plugin API [describes this callback](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/include/nccl_net.h#L49-L51) as the flush that makes data received into CUDA memory visible to the GPU, and a later NCCL commit states the principle in one line: [a CPU read of GPU BAR memory drains prior PCIe posted writes](https://github.com/NVIDIA/nccl/commit/a12d73a8b692d62af7dbb475212e608630cb1752). (That is a platform-specific fence design, not a universal theorem about RDMA reads. The linked source shows its exact mechanics; don't generalize it past them.)
 
@@ -118,7 +115,7 @@ That registration was the trigger.
 
 At the verbs API boundary, the registration line means: let the RNIC use these four bytes as a local write destination. On a fork-safe libibverbs, it also means something the signature never hints at: change the fork-inheritance policy of the entire virtual-memory page containing them.
 
-Fork safety was armed in this stack, and that is not exotic. At the commit above, NCCL's IB init [calls `ibv_fork_init()` unconditionally](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L93-L94). For everything else, rdma-core [honors `RDMAV_FORK_SAFE` / `IBV_FORK_SAFE`](https://github.com/linux-rdma/rdma-core/blob/c1c5bf1f480312c07ed4d23f0feecf8b5fd73289/libibverbs/init.c#L664-L671) from the environment, and real fleets set it: AWS's EFA network plugin for NCCL exports `RDMAV_FORK_SAFE=1` on your behalf and logs that it did. Training stacks fork constantly (data loaders, checkpoint writers), so fork safety was the responsible setting. What it actually does is the surprise.
+Fork safety was armed in this stack, and that is not exotic. At the commit above, NCCL's IB init [calls `ibv_fork_init()` unconditionally](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L93-L94). For everything else, rdma-core [honors `RDMAV_FORK_SAFE` / `IBV_FORK_SAFE`](https://github.com/linux-rdma/rdma-core/blob/c1c5bf1f480312c07ed4d23f0feecf8b5fd73289/libibverbs/init.c#L664-L671) from the environment, and real fleets set it: AWS's EFA network plugin for NCCL exports `RDMAV_FORK_SAFE=1` on your behalf and logs that it did. Training stacks fork constantly (data loaders, checkpoint writers), so fork safety was the responsible setting.
 
 `ibv_fork_init()` sets up an interval tree of registered ranges. From then on, every ordinary (non-ODP) registration passes through [`ibv_dontfork_range()`](https://github.com/linux-rdma/rdma-core/blob/c1c5bf1f480312c07ed4d23f0feecf8b5fd73289/libibverbs/verbs.c) before the provider ever sees it, and that function rounds the byte interval out to page boundaries and applies `madvise(MADV_DONTFORK)`:
 
@@ -130,7 +127,7 @@ end   = ((uintptr_t) (base + size + range_page_size - 1) &
 madvise(start, end - start + 1, MADV_DONTFORK);
 ```
 
-Deregistration reference-counts the overlap and applies `MADV_DOFORK` when the last registration touching a range goes away. The accounting is careful. The granularity is the problem. On a 4 KiB-page machine:
+Deregistration reference-counts overlapping ranges and applies `MADV_DOFORK` when the last registration touching a range goes away. The range is rounded to whole pages. On a machine with 4 KiB pages:
 
 ```text
 requested MR length:        4 bytes
@@ -192,7 +189,7 @@ The scratch word did not live on a private page. It was a small field inside a h
 
 ## 4. Why the page had to leave the child
 
-Why would a library ever consider withholding your memory from your children a *safety* feature? Because for pinned DMA memory, the alternative was corruption. This section is the why; it is also the part of the mental model that survives past RDMA.
+Why would a library ever consider withholding your memory from your children a *safety* feature? Because for pinned DMA memory, the alternative was corruption.
 
 CPU copy-on-write works because the CPU asks permission. After `fork()`, parent and child share physical page `P`, and both mappings are write-protected. When either side writes, the CPU takes a page fault *before* the store lands, the kernel copies `P` to a fresh page `Q`, repoints the writer, and retries. The essential ingredient is the synchronous trap before the destructive write: at copy time, the old contents still exist.
 
@@ -266,7 +263,7 @@ Once the page layout is fixed, the mechanism is fully deterministic. The page la
 - **The page keeps accepting tenants.** The registered page's free space stays in the allocator's inventory. Objects malloc'd *after* the registration can move in next to the scratch word, and they vanish from children too.
 - **The child must touch the hole.** A networking test that never forks cannot see it. A child that forks and immediately execs never touches inherited heap. A checkpoint worker does exactly the dangerous thing: it keeps executing in the inherited address space and walks parent-built state.
 
-So "one binary failed and another did not" was directionally right, and the precise condition was: this build, times this allocator history, times this page placement, times whether the child dereferences the collateral. Every factor except the last one is invisible in source code.
+A build can fail or succeed depending on allocator history, page placement, and whether a child touches the affected object. Most of those conditions are invisible in source code.
 
 ## 6. Debugging backward from the process boundary
 
@@ -281,11 +278,11 @@ SIGSEGV only in fork children
   -> inventory every ibv_reg_mr touching that page
 ```
 
-The `dc` VmFlag is the kernel telling you, in its own handwriting, that someone madvised this range `MADV_DONTFORK`. From there the registration inventory is finite, and a four-byte MR sitting inside a shared heap page is hard to miss once you are actually looking for it.
+The `dc` VmFlag shows that this range was marked `MADV_DONTFORK`. From there the registration inventory is finite, and a four-byte MR sitting inside a shared heap page is hard to miss once you are actually looking for it.
 
 One disambiguation worth writing down: a `DONTFORK` hole is *absent*, not zeroed. If a child observes zero-filled memory, that is a different mechanism (`MADV_WIPEONFORK` supplies zero pages on fork) or a tooling artifact from reading around the hole. The child of a `DONTFORK` page does not read zeros. It faults.
 
-The closing experiment was the causal one: move the RDMA-owned scratch onto its own dedicated, page-rounded allocation, change nothing in checkpointing, and the crash disappears. Reintroduce the shared-page registration and it comes back. That experiment matters because it flips exactly the variable the hypothesis names, page co-tenancy, and nothing else.
+Moving the RDMA scratch onto its own dedicated, page-rounded allocation stopped the crashes without changing checkpointing. Putting the scratch back on a shared heap page brought them back. This isolated page sharing as the cause.
 
 ## 7. Reproducing it, no RNIC required
 
@@ -303,7 +300,7 @@ parent: child killed by signal 11 (Segmentation fault)
 parent: neighbor_state still "epoch=41 step=118000"
 ```
 
-There is the whole story in nine lines: four bytes requested, 4096 marked, `dc` in VmFlags, the parent reading happily, the child dead on the same pointer. And the fix, same registration, dedicated page:
+The parent can read the pointer, but the child faults: the four-byte registration excluded the whole 4096-byte page. Here is the same registration with a dedicated page:
 
 ```shellsession title="./dontfork fixed: the invariant, in miniature"
 reg_mr: asked for 4 bytes at 0x721a000
@@ -329,7 +326,7 @@ static ncclResult_t ncclIbMalloc(void** ptr, size_t size) {
   int ret = posix_memalign(&p, page_size, size_aligned);
 ```
 
-And here the scope note's planted thought pays off: at the very commit this post has been quoting, the IB transport's connection structs are [already allocated through this helper](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L57-L70). In fact they always were: the helper, comment and all, is present in the [first public commit that added the IB transport](https://github.com/NVIDIA/nccl/commit/f93fe9bfd94884cec2ba711897222e0df5569a53) (2.3.5-5, September 2018). No released public NCCL ever had the shared-page hazard. The comment is scar tissue from a lesson learned before open-sourcing, and the transport in this story re-derived that lesson independently. That is what makes this worth writing down as a class rather than a bug: any codebase that registers small heap objects on a fork-safe verbs stack re-derives it on schedule.
+In the public NCCL code quoted here, the IB connection structs are [already allocated through this helper](https://github.com/NVIDIA/nccl/blob/c38f174bd436031dbc79dce19ff969f377976a8a/src/transport/net_ib.cc#L57-L70). In fact they always were: the helper, comment and all, is present in the [first public commit that added the IB transport](https://github.com/NVIDIA/nccl/commit/f93fe9bfd94884cec2ba711897222e0df5569a53) (2.3.5-5, September 2018). No released public NCCL ever had the shared-page hazard. The transport in this incident independently ran into the problem that public NCCL already guarded against. Other code that registers small heap objects on the same fork-safe verbs path needs the same allocation rule.
 
 Two footnotes on the invariant. First, it degrades gracefully: on the old path the only memory a child loses is RDMA-owned state it should never touch anyway. Second, huge pages have their own trap: fork-safe rounding uses the base page size unless `RDMAV_HUGEPAGES_SAFE` is also set, which rdma-core's own docs call required if the application uses huge pages at all.
 
@@ -382,15 +379,11 @@ rdma-core exposes the boundary between the two worlds: [`ibv_is_fork_initialized
 
 **A byte-range API can carry page-range consequences.** The interface accepted four bytes. The enforcement unit was a page. The same shape hides under cache-line false sharing, huge-page mappings, IOMMU granules, and filesystem blocks: the unit you asked in is not necessarily the unit the system acts in.
 
-**Process topology is part of the interface.** The transport passed its tests because the data movement was correct. Production added `fork()`, inherited heaps, checkpoint children. Registered memory couples to all of it, which makes `ibv_reg_mr()` a lifecycle contract with the whole process tree, not a permission slip for one NIC.
+**Process topology is part of the interface.** The transport passed its tests because the data movement was correct. Production added `fork()`, inherited heaps, checkpoint children. Registering memory can change what those children inherit, so the transport’s tests need to cover the process tree too.
 
-**Fix with invariants, not layouts.** "Move this integer until the crash stops" survives until the next rebuild. "Registered memory owns its pages and contains nothing a child needs" survives allocator changes, rebuilds, and time. The fix that lasts is the one you can state without mentioning an address.
+**Give registered memory its own pages.** Moving an integer within the heap may hide the crash until the next rebuild. A dedicated, page-aligned, page-rounded allocation keeps unrelated child state off the registered pages even when the heap layout changes.
 
-## Epilogue
-
-Every local decision in this incident was reasonable. The GPU needed a visibility fence. The fence needed a registered local buffer, and four bytes was honestly all it needed. Libibverbs needed to keep pinned DMA pages from tearing forked children, and page granularity was the only granularity `fork()` offers. The checkpoint worker expected inherited memory to be there. Every layer kept its contract.
-
-The contracts did not compose, because four bytes and one page were treated as the same unit. That was the bug.
+<div id="epilogue"></div>
 
 ---
 

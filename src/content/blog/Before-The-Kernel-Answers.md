@@ -1,27 +1,22 @@
 ---
 title: "Before the kernel answers: IDT, SYSCALL, and the stack-switch fine print"
-description: "Interrupts switch stacks in hardware. SYSCALL doesn't switch stacks at all — and the kernel is fine with that. The entry-path details most explanations get wrong."
+description: "On x86-64, interrupts and SYSCALL enter the kernel differently. Follow the stack switch, the saved registers, and the extra work required by KPTI."
 date: 2026-07-12
 tags: [kernel, x86-64, syscalls]
 draft: true
 ---
 
-> This post grew out of an appendix to [What actually happens between exec() and main()](/blog/ELF-Linking-101/) — the "hardware gate" deserved more than a footnote.
+> This expands the kernel-entry section of [What actually happens between exec() and main()](/blog/ELF-Linking-101/).
 
-Here is what happens on **modern x86-64** when we interact with the kernel, with the crucial clarification most explanations blur:
-
-- **User → kernel entry via IDT (interrupts/exceptions):** the CPU **does switch** to a kernel-controlled stack in hardware (via the TSS, optionally IST).
-- **User → kernel entry via `syscall`:** the CPU **does not** switch stacks in hardware; the kernel's entry stub switches stacks in software **before touching the stack**, so the kernel does not meaningfully "run on the user stack."
+On x86-64, entering the kernel from user mode also requires switching to a kernel-controlled stack. For interrupts and exceptions delivered through the IDT, hardware performs that switch. `SYSCALL` leaves `RSP` unchanged, so Linux’s entry code switches stacks before using the stack.
 
 ## 1) The Interrupt Descriptor Table (IDT)
 
 When we press a key, the keyboard generates an external interrupt. On modern systems the interrupt routing logic (APIC/IO-APIC, etc.) delivers an **interrupt *vector*** to the CPU. People often say "IRQ 1 for keyboard," but that's a legacy naming convention: what the CPU uses to index the IDT is the **vector number**, and Linux's own docs refer to "IDT vector assignments" (e.g., in `arch/x86/include/asm/irq_vectors.h`). ([Kernel][1])
 
-### The lookup
-
 The CPU consults the **IDT**, a table mapping interrupt/exception vectors to entry stubs (interrupt/trap gates). Linux registers many of these entry points in `traps.c` and implements the mechanics in `entry_64.S`. ([Kernel][1])
 
-### The stack switch (TSS & IST): the kernel must not run on a user stack
+### Switching to a kernel stack
 
 This is the security-critical guarantee: **on a privilege transition (CPL 3 → CPL 0), the CPU cannot safely execute on the user stack**, so it switches to a kernel-controlled stack.
 
@@ -33,16 +28,11 @@ There are two related mechanisms:
 2. **Interrupt Stack Table (IST): optional per-vector "known-good" stacks**
    If the IDT gate specifies a non-zero **IST index**, the CPU loads the stack pointer from that IST slot in the TSS. Linux explicitly calls out that **IST-based entry needs special handling**, and that "super-atomic" vectors and certain contexts rely on the more careful entry logic; it also notes that some entries push an error code and others do not, and that the IST stack mechanism changes the stack-frame mechanics. ([Kernel][1])
 
-**Why is IST "optional"?**
-Because IST is a limited and specialized tool: Linux tries to "only use IST entries … for vectors that absolutely need" the more paranoid handling, and uses normal entry paths for the rest. ([Kernel][1])
+Linux reserves IST entries for vectors that need the more careful entry handling, rather than using them for every interrupt. ([Kernel][1])
 
 ### The save: what actually gets pushed
 
 On interrupt/exception entry, the CPU builds a defined stack frame (more than just RIP/RSP). At minimum it preserves the instruction pointer / flags / code segment, and on privilege transitions it also saves the old stack context; certain exceptions add an **error code**. Linux's entry documentation explicitly notes this split ("Some of the IDT entries push an error code onto the stack; others don't."). ([Kernel][1])
-
-### The handler
-
-Only after the CPU has (1) selected the correct entry, (2) landed on a safe stack (TSS/IST rules), and (3) preserved the interrupted context does the kernel's handler code run.
 
 ## 2) The `syscall` instruction (the fast path) and why it's "special"
 
@@ -58,7 +48,7 @@ When the OS boots, it programs model-specific registers (MSRs) so the CPU knows 
 - `IA32_STAR`: encodes the code/stack segment selectors
 - `IA32_FMASK`: specifies which RFLAGS bits are cleared on entry
 
-(These are the architectural contract that makes `SYSCALL` a direct jump into kernel entry stubs.) ([Félix Cloutier][2])
+These registers supply the entry address and state changes used by `SYSCALL`. ([Félix Cloutier][2])
 
 ### The jump: what hardware does on `SYSCALL`
 
@@ -68,25 +58,18 @@ When user code executes `syscall`:
 - It saves the user return address into **RCX**
 - It saves user flags into **R11**, then masks flags via `IA32_FMASK`
 
-And here's the key point:
-
 > **`SYSCALL` does not save the stack pointer (RSP), and does not switch stacks in hardware.** ([Félix Cloutier][2])
 
-This is exactly what makes `SYSCALL` "fast": the CPU avoids doing the full interrupt-frame push and stack switching that happens through an IDT gate.
+This avoids the full interrupt-frame push and hardware stack switch of an IDT entry.
 
-### "Wait, does the kernel run on the user stack then?"
+### Switching stacks in the entry code
 
-In the strictest sense, **for a brief window of instructions**, `RSP` still contains the user value right after entering ring 0 via `SYSCALL`. That sounds scary, but the kernel entry stub is carefully written around this:
+For the first few instructions after `SYSCALL` enters ring 0, `RSP` still holds the user value. Linux’s entry stub handles that window as follows:
 
 - **It does not touch the stack** (no `push`, no stack spills) until it switches stacks.
 - It immediately switches to a kernel-controlled stack in software as part of the entry sequence.
 
 This is why system-call teaching material (and kernel entry docs) can correctly summarize the end result as: during the user→kernel transition "the stack is also switched from the user stack to the kernel stack". But for the `SYSCALL` path that switching is performed by the kernel's entry code, not by hardware. ([Linux Kernel Labs][3])
-
-**So the crisp, correct statement is:**
-
-- **Interrupt/exception entry from user mode:** hardware stack switch via TSS/IST.
-- **`SYSCALL` entry from user mode:** hardware does *not* switch stacks; kernel entry code switches immediately **before using the stack**. ([Félix Cloutier][2])
 
 ## 3) KPTI / PTI (Kernel Page Table Isolation)
 
@@ -113,7 +96,7 @@ PTI adds runtime overhead primarily because:
 
 Linux's PTI documentation calls out an additional nuance: PTI uses a **trampoline** for `SYSCALL` entry with a smaller mapped resource set, and explicitly notes "the downside is that stacks must be switched at entry time." This is the exact place where the "`SYSCALL` doesn't change RSP" architectural rule meets the kernel's need to get onto a safe stack immediately. ([Kernel][4])
 
-## Summary (the "no contradictions" version)
+## Reference summary
 
 - **IDT-based entry from user mode:** CPU consults IDT, selects a kernel stack via TSS (optionally IST), pushes an entry frame, then runs kernel code. IST is **optional** and reserved for vectors that need a known-good stack and/or paranoid entry behavior. ([Kernel][1])
 - **`SYSCALL` entry:** CPU jumps to `IA32_LSTAR`, saves return state in registers (RCX/R11), and does **not** change RSP; the kernel entry stub switches to a kernel stack in software **before touching the stack**, preserving security. ([Félix Cloutier][2])
