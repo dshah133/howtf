@@ -1,32 +1,31 @@
 ---
-import { getCollection } from "astro:content";
-import Base from "../../layouts/Base.astro";
-import PostCard from "../../components/PostCard.astro";
-import { SITE, seriesSlug } from "../../lib/site";
+import PageHeading from "../../components/PageHeading.astro"
+import { getCollection } from "astro:content"
+import Base from "../../layouts/Base.astro"
+import PostCard from "../../components/PostCard.astro"
+import { SITE, seriesSlug } from "../../lib/site"
 
 export async function getStaticPaths() {
-  const posts = await getCollection("blog", ({ data }) => !data.draft);
-  const bySlug = new Map<string, { name: string; parts: typeof posts }>();
+  const posts = await getCollection("blog", ({ data }) => !data.draft)
+  const bySlug = new Map<string, { name: string; parts: typeof posts }>()
   for (const p of posts) {
-    if (!p.data.series) continue;
-    const slug = seriesSlug(p.data.series.name);
-    if (!bySlug.has(slug)) bySlug.set(slug, { name: p.data.series.name, parts: [] });
-    bySlug.get(slug)!.parts.push(p);
+    if (!p.data.series) continue
+    const slug = seriesSlug(p.data.series.name)
+    if (!bySlug.has(slug)) bySlug.set(slug, { name: p.data.series.name, parts: [] })
+    bySlug.get(slug)!.parts.push(p)
   }
   return [...bySlug.entries()].map(([slug, s]) => {
-    s.parts.sort(
-      (a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0),
-    );
-    return { params: { slug }, props: s };
-  });
+    s.parts.sort((a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0))
+    return { params: { slug }, props: s }
+  })
 }
 
 interface Props {
-  name: string;
-  parts: Awaited<ReturnType<typeof getCollection<"blog">>>;
+  name: string
+  parts: Awaited<ReturnType<typeof getCollection<"blog">>>
 }
 
-const { name, parts } = Astro.props;
+const { name, parts } = Astro.props
 ---
 
 <Base
@@ -37,15 +36,12 @@ const { name, parts } = Astro.props;
 >
   <main class="page series-detail" id="main">
     <div class="home-center archive">
-      <h1><span class="heading-kicker">// series ·</span>{name}</h1>
+      <PageHeading title={name} parent={{ href: "/series/", label: "series" }} />
       <ul style="list-style: none; display: flex; flex-direction: column; gap: 1.4rem;">
         {
           parts.map((post) => (
             <li>
-              <PostCard
-                post={post}
-                label={`part ${post.data.series!.part} of ${parts.length}`}
-              />
+              <PostCard post={post} label={`part ${post.data.series!.part} of ${parts.length}`} />
             </li>
           ))
         }

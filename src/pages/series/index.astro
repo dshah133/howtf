@@ -1,23 +1,21 @@
 ---
-import { getCollection } from "astro:content";
-import Base from "../../layouts/Base.astro";
-import { SITE, seriesSlug, fmtDate } from "../../lib/site";
+import PageHeading from "../../components/PageHeading.astro"
+import { getCollection } from "astro:content"
+import Base from "../../layouts/Base.astro"
+import { SITE, seriesSlug, fmtDate } from "../../lib/site"
 
-const posts = await getCollection("blog", ({ data }) => !data.draft);
-const bySeries = new Map<
-  string,
-  { name: string; parts: typeof posts }
->();
+const posts = await getCollection("blog", ({ data }) => !data.draft)
+const bySeries = new Map<string, { name: string; parts: typeof posts }>()
 for (const p of posts) {
-  if (!p.data.series) continue;
-  const slug = seriesSlug(p.data.series.name);
-  if (!bySeries.has(slug)) bySeries.set(slug, { name: p.data.series.name, parts: [] });
-  bySeries.get(slug)!.parts.push(p);
+  if (!p.data.series) continue
+  const slug = seriesSlug(p.data.series.name)
+  if (!bySeries.has(slug)) bySeries.set(slug, { name: p.data.series.name, parts: [] })
+  bySeries.get(slug)!.parts.push(p)
 }
 for (const s of bySeries.values()) {
-  s.parts.sort((a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0));
+  s.parts.sort((a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0))
 }
-const series = [...bySeries.entries()];
+const series = [...bySeries.entries()]
 ---
 
 <Base
@@ -28,19 +26,25 @@ const series = [...bySeries.entries()];
 >
   <main class="page series-index" id="main">
     <div class="home-center archive">
-      <h1><span class="heading-prefix" aria-hidden="true">//</span> series</h1>
+      <PageHeading title="series" />
       {
         series.map(([slug, s]) => (
           <div class="frame">
             <span class="frame-title">series</span>
-            <span class="frame-tag">{s.parts.length} part{s.parts.length === 1 ? "" : "s"}</span>
+            <span class="frame-tag">
+              {s.parts.length} part{s.parts.length === 1 ? "" : "s"}
+            </span>
             <h2 style="font-family: var(--font-display); font-weight: 400; font-size: 1.2rem;">
-              <a href={`/series/${slug}/`} style="text-decoration: none;">{s.name}</a>
+              <a href={`/series/${slug}/`} style="text-decoration: none;">
+                {s.name}
+              </a>
             </h2>
             <ol class="series-parts">
               {s.parts.map((p) => (
                 <li>
-                  <a href={`/blog/${p.id}/`}>Part {p.data.series!.part}: {p.data.title}</a>
+                  <a href={`/blog/${p.id}/`}>
+                    Part {p.data.series!.part}: {p.data.title}
+                  </a>
                   <span class="eyebrow"> — {fmtDate(p.data.date)}</span>
                 </li>
               ))}

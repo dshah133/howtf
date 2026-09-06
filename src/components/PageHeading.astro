@@ -1,0 +1,19 @@
+---
+interface Props {
+  title: string
+  parent?: { href: string; label: string }
+}
+const { title, parent } = Astro.props
+---
+
+<header class="page-heading">
+  {
+    parent && (
+      <a class="page-parent" href={parent.href}>
+        ← {parent.label}
+      </a>
+    )
+  }
+  <h1>{title}</h1>
+  <slot />
+</header>

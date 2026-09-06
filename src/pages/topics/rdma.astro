@@ -1,12 +1,14 @@
 ---
-import { getCollection } from "astro:content";
-import Base from "../../layouts/Base.astro";
-import PostCard from "../../components/PostCard.astro";
-import { SITE } from "../../lib/site";
+import TopicNav from "../../components/TopicNav.astro"
+import PageHeading from "../../components/PageHeading.astro"
+import { getCollection } from "astro:content"
+import Base from "../../layouts/Base.astro"
+import PostCard from "../../components/PostCard.astro"
+import { SITE } from "../../lib/site"
 
 const posts = (
   await getCollection("blog", ({ data }) => !data.draft && data.tags.includes("rdma"))
-).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
 ---
 
 <Base
@@ -18,19 +20,23 @@ const posts = (
   <main class="page topic-page" id="main">
     <div class="home-center archive">
       <div>
-        <h1><span class="heading-prefix" aria-hidden="true">//</span> RDMA deep dives</h1>
-        <p>
-          Production war stories from the RDMA and InfiniBand stack: libibverbs,
-          GPUDirect, NCCL, memory registration, and the kernel machinery under
-          them. Every post reconstructs a real failure end to end, checks the
-          mechanism against public source, and ships a runnable reproducer.
-        </p>
+        <PageHeading title="RDMA deep dives">
+          <p>
+            Production war stories from the RDMA and InfiniBand stack: libibverbs, GPUDirect, NCCL,
+            memory registration, and the kernel machinery under them. Every post reconstructs a real
+            failure end to end, checks the mechanism against public source, and ships a runnable
+            reproducer.
+          </p>
+          <TopicNav current="rdma" count={posts.length} />
+        </PageHeading>
         <ul>
-          {posts.map((post) => (
-            <li>
-              <PostCard post={post} />
-            </li>
-          ))}
+          {
+            posts.map((post) => (
+              <li>
+                <PostCard post={post} />
+              </li>
+            ))
+          }
         </ul>
       </div>
     </div>

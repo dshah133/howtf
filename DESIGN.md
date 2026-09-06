@@ -59,6 +59,8 @@ background, including tinted SVG regions, before introducing new colors.
 
 ## Layout and reading behavior
 
+- Index pages use plain headings and a compact topic-navigation row.
+  Breadcrumbs are real back links, without decorative comment prefixes.
 - Post lists put the date and label in a left margin on desktop, above the
   text on phones. Thin rules separate entries.
 - Series show reading order with a restrained numbered sequence. Tool

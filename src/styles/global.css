@@ -1643,20 +1643,6 @@ dialog::backdrop {
 }
 
 /* Final hierarchy and wrapping polish; the original words are retained. */
-.heading-prefix {
-  font: 18px/1.4 var(--font-mono);
-  letter-spacing: 0;
-  color: var(--muted);
-  vertical-align: middle;
-  margin-right: 10px;
-}
-.heading-kicker {
-  display: block;
-  font: 12px/1.7 var(--font-body);
-  letter-spacing: 0;
-  color: var(--muted);
-  margin-bottom: 19px;
-}
 .series-detail .archive > ul {
   border-top: 1px solid var(--border);
 }
@@ -1677,13 +1663,6 @@ dialog::backdrop {
   border-radius: 0 !important;
 }
 @media (max-width: 640px) {
-  .heading-prefix {
-    font-size: 16px;
-    margin-right: 5px;
-  }
-  .heading-kicker {
-    font-size: 12px;
-  }
   .tool-card :is(h2, h3) {
     font-size: 20px;
   }
@@ -1758,5 +1737,94 @@ dialog,
   .subscribe-fields button {
     align-self: flex-start;
     min-width: 90px;
+  }
+}
+
+/* Index headings use real navigation in place of decorative code prefixes. */
+.page-heading {
+  margin-bottom: 28px;
+}
+.archive .page-heading h1 {
+  margin: 0;
+  max-width: 900px;
+  font-size: clamp(34px, 4vw, 44px);
+  line-height: 1.18;
+  letter-spacing: -1px;
+  overflow-wrap: normal;
+}
+.page-heading > p,
+.archive .page-heading .topics-line {
+  max-width: 760px;
+  margin: 18px 0 0;
+  font-size: 15px;
+  line-height: 1.85;
+}
+.page-parent {
+  display: inline-block;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.topic-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 28px;
+  margin-top: 26px;
+  border-bottom: 1px solid var(--border);
+}
+.topic-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+}
+.topic-tabs a {
+  display: block;
+  position: relative;
+  padding: 7px 0 15px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-decoration: none;
+}
+.topic-tabs a:hover,
+.topic-tabs a[aria-current="page"] {
+  color: var(--text);
+}
+.topic-tabs a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  background: var(--accent);
+}
+.archive-count {
+  margin-left: auto;
+  padding-bottom: 15px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.page-heading + section .year {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+@media (max-width: 640px) {
+  .page-heading {
+    margin-bottom: 24px;
+  }
+  .archive .page-heading h1 {
+    font-size: 36px;
+    letter-spacing: -0.8px;
+  }
+  .topic-navigation {
+    margin-top: 22px;
+    column-gap: 18px;
+  }
+  .topic-tabs {
+    column-gap: 22px;
   }
 }
