@@ -1,7 +1,7 @@
 # howtf.io design system
 
 Warm paper, green ink, and a quiet reading column. The same type, fine rules,
-spacing, and controls apply to the homepage, archives, series, tools, about,
+spacing, and controls apply to the homepage, archives, series, about,
 and complete articles. The editorial content stays in its existing files.
 
 ## Site mark
@@ -59,12 +59,12 @@ background, including tinted SVG regions, before introducing new colors.
 
 ## Layout and reading behavior
 
-- Index pages use plain headings and a compact topic-navigation row.
-  Breadcrumbs are real back links, without decorative comment prefixes.
+- Index pages use plain headings. Posts form one chronological archive,
+  without special topic navigation. Breadcrumbs are real back links.
 - Post lists put the date and label in a left margin on desktop, above the
   text on phones. Thin rules separate entries.
-- Series show reading order with a restrained numbered sequence. Tool
-  categories and requirements occupy the same visual margin.
+- Series show reading order with a restrained numbered sequence. Tools and
+  reproducers are linked from their articles, without a standalone catalog.
 - Article titles and metadata appear before the table of contents on phones.
   Desktop articles have a sticky backtrace with an active section indicator.
 - Once the title block leaves the viewport, a compact running header shows

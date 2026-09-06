@@ -25,6 +25,7 @@ import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 
 export default defineConfig({
   site: "https://howtf.io",
+  redirects: { "/tools/": "/blog/" },
   cacheDir: "./.astro/cache",
   integrations: [
     expressiveCode({

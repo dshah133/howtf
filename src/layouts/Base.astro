@@ -81,7 +81,7 @@ const ogImageUrl = new URL(ogImage, Astro.site).href
             howtf.io
           </a>
           <nav aria-label="Main navigation">
-            {["blog", "series", "tools", "about"].map((route) => (
+            {["blog", "series", "about"].map((route) => (
               <a href={`/${route}/`} aria-current={current === route ? "page" : undefined}>
                 {route === "blog" ? "posts" : route}
               </a>

@@ -1,5 +1,4 @@
 ---
-import TopicNav from "../../components/TopicNav.astro"
 import PageHeading from "../../components/PageHeading.astro"
 import { getCollection } from "astro:content"
 import Base from "../../layouts/Base.astro"
@@ -29,9 +28,7 @@ const years = [...byYear.keys()].sort((a, b) => b - a)
   <main class="page" id="main">
     <div class="home-center archive">
       <div>
-        <PageHeading title="all posts">
-          <TopicNav count={posts.length} />
-        </PageHeading>
+        <PageHeading title="all posts" />
         {
           years.map((y) => (
             <section>

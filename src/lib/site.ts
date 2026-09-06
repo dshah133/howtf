@@ -9,7 +9,7 @@ export const SITE = {
   newsletterAction: "https://buttondown.com/api/emails/embed-subscribe/howtf",
 };
 
-// tags that have a topic hub page; tags listed here render as links on posts.
+// Legacy topic landing pages kept for incoming links and the crawl index.
 // One entry per file in src/pages/topics/ — llms.txt asserts the two stay in
 // sync at build time, so a drift fails the build instead of silently
 // dropping a hub from the index.

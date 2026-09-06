@@ -458,49 +458,6 @@ button:disabled {
 .series-detail .post-entry {
   border-top: 1px solid var(--border) !important;
 }
-.tools-page .tool-card {
-  padding: 35px 0 38px 155px;
-  position: relative;
-  border: 0;
-  border-top: 1px solid var(--border);
-  margin: 0;
-}
-.tool-card .frame-title {
-  position: absolute;
-  left: 0;
-  top: 38px;
-}
-.tool-card .frame-tag {
-  position: absolute;
-  left: 0;
-  top: 66px;
-  max-width: 130px;
-  font-size: 11px;
-}
-.tool-card :is(h2, h3) {
-  font: normal 25px/1.3 var(--font-mono);
-  overflow-wrap: anywhere;
-  margin: 0 0 17px;
-}
-.tool-card :is(h2, h3) a {
-  color: var(--text);
-  text-decoration: none;
-}
-.tool-card :is(h2, h3) a:after {
-  content: " ↗";
-  font-size: 16px;
-  color: var(--accent);
-}
-.tool-card .dek {
-  font-size: 15px;
-  line-height: 1.9;
-  max-width: 700px;
-}
-.tool-card .meta {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 22px;
-}
 .about-page .bio {
   border: 0;
   display: grid;
@@ -1233,12 +1190,6 @@ dialog::backdrop {
   .series-index .frame {
     padding-left: 115px;
   }
-  .tools-page .tool-card {
-    padding-left: 135px;
-  }
-  .tool-card .frame-tag {
-    max-width: 110px;
-  }
 }
 @media (max-width: 640px) {
   html {
@@ -1370,25 +1321,6 @@ dialog::backdrop {
   .series-detail .entry-label {
     font: 13px var(--font-body);
     margin: 0;
-  }
-  .tools-page .tool-card {
-    padding: 27px 0;
-  }
-  .tool-card .frame-title,
-  .tool-card .frame-tag {
-    position: static;
-    display: inline-block;
-    margin-right: 20px;
-    margin-bottom: 14px;
-    max-width: none;
-    font-size: 12px;
-  }
-  .tool-card :is(h2, h3) {
-    font-size: 21px;
-    margin-bottom: 16px;
-  }
-  .tool-card .dek {
-    font-size: 15px;
   }
   .about-page .bio {
     display: block;
@@ -1663,9 +1595,6 @@ dialog::backdrop {
   border-radius: 0 !important;
 }
 @media (max-width: 640px) {
-  .tool-card :is(h2, h3) {
-    font-size: 20px;
-  }
   .reading-bar .reading-home {
     flex-shrink: 0;
   }
@@ -1764,54 +1693,6 @@ dialog,
   margin-bottom: 18px;
   font-size: 13px;
 }
-.topic-navigation {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 28px;
-  margin-top: 26px;
-  border-bottom: 1px solid var(--border);
-}
-.topic-tabs {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 28px;
-}
-.topic-tabs a {
-  display: block;
-  position: relative;
-  padding: 7px 0 15px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--muted);
-  text-decoration: none;
-}
-.topic-tabs a:hover,
-.topic-tabs a[aria-current="page"] {
-  color: var(--text);
-}
-.topic-tabs a[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  height: 2px;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  background: var(--accent);
-}
-.archive-count {
-  margin-left: auto;
-  padding-bottom: 15px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.page-heading + section .year {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
-}
 @media (max-width: 640px) {
   .page-heading {
     margin-bottom: 24px;
@@ -1819,12 +1700,5 @@ dialog,
   .archive .page-heading h1 {
     font-size: 36px;
     letter-spacing: -0.8px;
-  }
-  .topic-navigation {
-    margin-top: 22px;
-    column-gap: 18px;
-  }
-  .topic-tabs {
-    column-gap: 22px;
   }
 }

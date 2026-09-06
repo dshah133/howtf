@@ -1,5 +1,4 @@
 ---
-import TopicNav from "../../components/TopicNav.astro"
 import PageHeading from "../../components/PageHeading.astro"
 import { getCollection } from "astro:content"
 import Base from "../../layouts/Base.astro"
@@ -20,14 +19,13 @@ const posts = (
   <main class="page topic-page" id="main">
     <div class="home-center archive">
       <div>
-        <PageHeading title="RDMA deep dives">
+        <PageHeading title="RDMA deep dives" parent={{ href: "/blog/", label: "all posts" }}>
           <p>
             Production war stories from the RDMA and InfiniBand stack: libibverbs, GPUDirect, NCCL,
             memory registration, and the kernel machinery under them. Every post reconstructs a real
             failure end to end, checks the mechanism against public source, and ships a runnable
             reproducer.
           </p>
-          <TopicNav current="rdma" count={posts.length} />
         </PageHeading>
         <ul>
           {
