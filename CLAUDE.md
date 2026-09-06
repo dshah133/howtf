@@ -5,9 +5,9 @@ stories from the bottom of the stack (kernel, linker/loader, GPU,
 virtualization). Live at **https://howtf.io**.
 
 ## Stack & layout
-- **Astro** static site, "Core Dump" TUI design system (light warm-paper
-  theme, Departure Mono display, iA Writer Quattro body, JetBrains Mono
-  code, CRT-amber accent). Expressive Code for code blocks.
+- **Astro** static site, warm-paper and green-ink design system (Georgia headings,
+  self-hosted iA Writer Quattro body, self-hosted JetBrains Mono code, light
+  and dark palettes). See `DESIGN.md` for reading and diagram behavior. Expressive Code for code blocks.
 - Posts live in `src/content/blog/*.md`. Series so far: **Linking &
   Loading** — Part 1 `ELF-Linking-101.md`, Part 2 `split-state-linking.md`.
 - Reproducers/tools: `demo/`, `tools/symsplit/`. In-post artifact links

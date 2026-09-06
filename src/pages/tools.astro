@@ -56,10 +56,10 @@ const artifacts = [
   canonical="/tools/"
   current="tools"
 >
-  <main class="shell">
+  <main class="page tools-page" id="main">
     <div class="home-center archive">
       <div>
-        <h1>// tools &amp; reproducers</h1>
+        <h1><span class="heading-prefix" aria-hidden="true">//</span> tools &amp; reproducers</h1>
         <p class="eyebrow topics-line">
           Every post on this site ships a runnable artifact. This is the
           catalog: each one reproduces the failure without the original
@@ -73,9 +73,9 @@ const artifacts = [
                   <div class="frame tool-card">
                     <span class="frame-title">{a.kind}</span>
                     <span class="frame-tag">{a.tag}</span>
-                    <h3>
+                    <h2>
                       <a href={`${REPO}/${a.path}`}>{a.path}</a>
-                    </h3>
+                    </h2>
                     <p class="dek">{a.dek}</p>
                     <p class="meta">
                       <span>

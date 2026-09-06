@@ -25,6 +25,7 @@ import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 
 export default defineConfig({
   site: "https://howtf.io",
+  cacheDir: "./.astro/cache",
   integrations: [
     expressiveCode({
       themes: ["gruvbox-dark-medium", "gruvbox-light-medium"],
@@ -40,7 +41,7 @@ export default defineConfig({
         borderRadius: "0",
         borderColor: "var(--border)",
         codeFontFamily: "var(--font-mono)",
-        codeFontSize: "0.8rem",
+        codeFontSize: "0.8125rem",
         codeLineHeight: "1.65",
         uiFontFamily: "var(--font-mono)",
         frames: {

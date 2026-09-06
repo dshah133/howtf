@@ -1,64 +1,86 @@
-# howtf.io design system — "Core Dump", TUI edition
+# howtf.io design system
 
-Not a website about terminals — **a TUI rendered to the web**. The design
-language of tmux/htop/gdb: bordered panes on a flat ground, panel titles inset
-into the border, inverse-video selection, a statusline footer, bitmap display
-type, CRT-amber phosphor. No cards, no shadows, no border-radius, no pills.
+Warm paper, green ink, and a quiet reading column. The same type, fine rules,
+spacing, and controls apply to the homepage, archives, series, tools, about,
+and complete articles. The editorial content stays in its existing files.
 
-## Type
+## Site mark
 
-| Role    | Face                      | Notes                                    |
-| ------- | ------------------------- | ---------------------------------------- |
-| Display | Departure Mono (400 only) | self-hosted, OFL — masthead, headings (word-spacing 0.4–0.45ch at display sizes), chrome labels |
-| Body    | iA Writer Quattro 400/700 + italic | self-hosted, OFL — a proportional mono: typewriter texture, prose-speed reading; 1.0625rem/1.7, 66ch measure |
-| Code    | JetBrains Mono 400/700    | code blocks + inline code only           |
+An open stack of layers, with an offset upper layer and a small exposed
+accent. The header, footer, running header, and SVG favicon share the same
+geometry. The favicon adapts to the browser color scheme; inline marks use
+the page theme. Keep the silhouette clear at 16px.
+
+## Typography
+
+| Role | Face | Size |
+| --- | --- | --- |
+| Editorial headings | Georgia, Times New Roman, serif | 24–54px by level; responsive |
+| Body | Self-hosted iA Writer Quattro | 17px / 1.85 in articles |
+| Navigation and metadata | iA Writer Quattro | Generally 12–13px |
+| Code and technical diagrams | Self-hosted JetBrains Mono 400/700 | Code: 13px / 1.65 |
+
+The article column is at most 680px. On phones, it uses the available width
+with 22px outer margins. Source code and diagrams scroll within their own
+containers. Code uses a true monospace face so ASCII diagrams remain aligned.
+Font licenses live beside the files in `public/fonts/`.
 
 ## Color
 
-Dark is canonical (phosphor); light is the "printout".
+| Token | Light | Dark |
+| --- | --- | --- |
+| Background | `#f8f6ef` | `#16221d` |
+| Surface | `#f0efe5` | `#1e2e25` |
+| Secondary surface | `#e6e8dc` | `#283a2e` |
+| Text | `#253e35` | `#e7e4d4` |
+| Muted text | `#606c64` | `#b1bcae` |
+| Border | `#c4ccbf` | `#475c4b` |
+| Accent | `#90442d` | `#e4b881` |
 
-| Token       | Dark      | Light     |
-| ----------- | --------- | --------- |
-| bg          | `#0e0c09` | `#f4eee0` |
-| surface     | `#17130e` | `#ece4d2` |
-| surface-2   | `#221c14` | `#e2d8c0` |
-| border      | `#3a3226` | `#c9bda0` |
-| text        | `#e6dcc8` | `#241c10` |
-| muted       | `#a4977e` | `#63573f` |
-| accent      | `#f2a900` | `#7a5200` |
+Honor the reader's saved `howtf-theme` preference, falling back to the system
+color scheme. Controls in the site header and the article's running header
+share the same state. Color preferences do not affect readable no-JavaScript
+content.
 
-Terminal frames are theme-invariant (real sessions are dark): bg `#12100b`,
-text `#e6dcc8`, muted `#a4977e`, accent `#f2a900`.
+Terminal frames remain dark in both themes. Their syntax tokens must use the
+dark token set as well. Source listings follow the selected theme.
 
-Key contrast ratios (WCAG, computed): text/bg dark 14.8 · muted/bg dark 7.0 ·
-amber/bg dark 9.3 · ink/paper light 13.9 · muted/paper 5.9 · accent/paper 5.6.
-Everything that renders text must stay ≥ 4.5:1 — check any new pair.
+### Stable diagram entities
 
-## Fixed entity color code (site-wide, every diagram, every post)
+| Entity | Light | Dark |
+| --- | --- | --- |
+| File sections | `#914300` | `#f2b96b` |
+| Memory segments | `#77571a` | `#d9c090` |
+| Loader | `#4e6423` | `#b5c795` |
+| Kernel | `#3d5687` | `#a4c2e4` |
 
-| Entity          | Dark      | Light     |
-| --------------- | --------- | --------- |
-| file sections   | `#f2a900` | `#a34d05` |
-| memory segments | `#d9b380` | `#77571a` |
-| loader (ld.so)  | `#9dbd7f` | `#4e6423` |
-| kernel          | `#8fb4e3` | `#3d5687` |
+Keep entity meanings consistent between posts. Check text on its actual
+background, including tinted SVG regions, before introducing new colors.
 
-Readers should never re-parse a legend: a section is amber in Part II and
-amber in Appendix F and amber in next year's post.
+## Layout and reading behavior
 
-## Devices
+- Post lists put the date and label in a left margin on desktop, above the
+  text on phones. Thin rules separate entries.
+- Series show reading order with a restrained numbered sequence. Tool
+  categories and requirements occupy the same visual margin.
+- Article titles and metadata appear before the table of contents on phones.
+  Desktop articles have a sticky backtrace with an active section indicator.
+- Once the title block leaves the viewport, a compact running header shows
+  the current section, Contents, and the theme control. Scrolling and fragment
+  navigation remain native. Reduced-motion preferences disable transitions
+  and smooth scrolling.
+- Contents opens in a native dialog. Section links retain their original
+  fragments and reveal closed appendices where needed.
+- Figures offer Expand, then Fit to window / Actual size. Move the existing
+  diagram into the inspector rather than cloning it. A placeholder preserves
+  document height; closing restores the figure, its interactive state,
+  horizontal position, and keyboard focus.
+- Keep essential explanations visible without JavaScript. Interactive figures
+  enhance their existing static presentation.
+- Print styles remove navigation and controls and retain the article.
 
-- **Pane**: `.frame` + `.frame-title` (+ optional `.frame-tag`) — bordered
-  panel with the title inset into the border line. The site's signature.
-- **Breakpoint aside**: markdown blockquote → amber-left-rule pane. Reserved
-  for the `/* howtf?! */` moment — the wtf→aha turn of a post.
-- **Inverse video**: hover/selection states swap to amber bg + ink text.
-  Links underline at rest, invert on hover. The TOC's active frame number
-  inverts.
-- **Backtrace TOC**: post h2s are gdb frames `#0…#n`, h3s indent beneath.
-- **Bracket labels**: `[start here]`, `[theme: dark]` — never rounded pills.
-- **Statusline**: header and footer are tmux-style bars with segment blocks.
-- **Terminal vs source**: bash/shellsession fences render as always-dark
-  terminal frames; source listings get `title="file.c"` tabs, line numbers
-  via `showLineNumbers`, highlights via `{n}` / `ins=` / `del=`, long dumps
-  collapsed via `collapse={x-y}`.
+## Production behavior
+
+Keep canonical URLs, social metadata, JSON-LD, RSS, and analytics intact.
+Newsletter forms POST to the configured Buttondown action. Do not ship preview
+banners, noindex tags, preview theme keys, or demo form interception.

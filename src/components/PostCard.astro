@@ -1,26 +1,34 @@
 ---
-import type { CollectionEntry } from "astro:content";
-import { fmtDate, readingTime } from "../lib/site";
-
+import type { CollectionEntry } from "astro:content"
+import { fmtDate, readingTime } from "../lib/site"
 interface Props {
-  post: CollectionEntry<"blog">;
-  /** pane title, e.g. "latest post" */
-  label?: string;
-  tag?: string;
+  post: CollectionEntry<"blog">
+  label?: string
+  tag?: string
+  lead?: boolean
 }
-
-const { post, label = "post", tag } = Astro.props;
-const { title, description, date, series } = post.data;
+const { post, label = "post", tag, lead = false } = Astro.props
+const { title, description, date, series } = post.data
 ---
 
-<a class="frame post-card" href={`/blog/${post.id}/`}>
-  <span class="frame-title">{label}</span>
-  {tag && <span class="frame-tag">{tag}</span>}
-  <h3>{title}</h3>
-  <p class="dek">{description}</p>
-  <p class="meta">
-    {series && <span class="series">{series.name} · Part {series.part}</span>}
-    <span>{fmtDate(date)}</span>
-    <span>{readingTime(post.body ?? "")}</span>
-  </p>
+<a class:list={["post-entry", { lead }]} href={`/blog/${post.id}/`}>
+  <div class="entry-date">
+    <span class="entry-label">{label}</span>
+    <time datetime={date.toISOString()}>{fmtDate(date)}</time>
+  </div>
+  <div class="entry-content">
+    {tag && <span class="entry-tag">{tag}</span>}
+    <h2>{title}<span class="entry-arrow" aria-hidden="true">→</span></h2>
+    <p class="entry-dek">{description}</p>
+    <p class="entry-meta">
+      {
+        series && (
+          <span>
+            {series.name} · Part {series.part}
+          </span>
+        )
+      }
+      <span>{readingTime(post.body ?? "")}</span>
+    </p>
+  </div>
 </a>

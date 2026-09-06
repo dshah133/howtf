@@ -35,9 +35,9 @@ const { name, parts } = Astro.props;
   canonical={`/series/${Astro.params.slug}/`}
   current="series"
 >
-  <main class="shell">
+  <main class="page series-detail" id="main">
     <div class="home-center archive">
-      <h1>// series · {name}</h1>
+      <h1><span class="heading-kicker">// series ·</span>{name}</h1>
       <ul style="list-style: none; display: flex; flex-direction: column; gap: 1.4rem;">
         {
           parts.map((post) => (

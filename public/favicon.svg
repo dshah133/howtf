@@ -1,6 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#0e0c09"/>
-  <rect x="4" y="4" width="56" height="56" fill="none" stroke="#3a3226" stroke-width="2"/>
-  <text x="12" y="45" font-family="ui-monospace, Menlo, monospace" font-size="34" font-weight="700" fill="#a4977e">~</text>
-  <text x="31" y="47" font-family="ui-monospace, Menlo, monospace" font-size="38" font-weight="700" fill="#f2a900">?</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <title>howtf.io</title>
+  <style>
+    :root { --ink: #253e35; --accent: #90442d; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #e7e4d4; --accent: #e4b881; }
+    }
+  </style>
+  <path fill="var(--ink)" d="M6 28l18 9 18-9v6l-18 9-18-9z"/>
+  <path fill="var(--ink)" d="M6 19l18 9 18-9v6l-18 9-18-9z"/>
+  <path fill="var(--ink)" fill-rule="evenodd" d="M3 10 21 1l18 9v5l-18 9-18-9zm10 0 8 4 8-4-8-4z"/>
+  <path fill="var(--accent)" d="m35 17 5-2.5 5 2.5-5 2.5z"/>
 </svg>

@@ -111,7 +111,7 @@ function h<K extends keyof SVGElementTagNameMap>(
 }
 
 export function mountLoaderStepper(root: HTMLElement): void {
-  const body = root.querySelector(".diagram-body");
+  const body = root.querySelector<HTMLElement>(".diagram-body");
   if (!body) return;
   body.innerHTML = "";
 
@@ -260,8 +260,8 @@ export function mountLoaderStepper(root: HTMLElement): void {
     step = Math.min(max, step + 1);
     render();
   });
-  root.tabIndex = 0;
-  root.addEventListener("keydown", (e) => {
+  body.tabIndex = 0;
+  body.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
       step = Math.min(max, step + 1);
       render();

@@ -24,10 +24,10 @@ const years = [...byYear.keys()].sort((a, b) => b - a);
   canonical="/blog/"
   current="blog"
 >
-  <main class="shell">
+  <main class="page" id="main">
     <div class="home-center archive">
       <div>
-        <h1>// all posts</h1>
+        <h1><span class="heading-prefix" aria-hidden="true">//</span> all posts</h1>
         <p class="eyebrow topics-line">
           topic hubs:{" "}
           {Object.entries(TOPIC_HUBS).map(([tag, hub], i) => (

@@ -1,39 +1,36 @@
 ---
-import { getCollection, render } from "astro:content";
-import type { CollectionEntry } from "astro:content";
-import Base from "../../layouts/Base.astro";
-import BacktraceToc from "../../components/BacktraceToc.astro";
-import Subscribe from "../../components/Subscribe.astro";
-import { SITE, TOPIC_HUBS, fmtDate, readingTime, seriesSlug } from "../../lib/site";
+import SiteMark from "../../components/SiteMark.astro"
+import { getCollection, render } from "astro:content"
+import type { CollectionEntry } from "astro:content"
+import Base from "../../layouts/Base.astro"
+import BacktraceToc from "../../components/BacktraceToc.astro"
+import Subscribe from "../../components/Subscribe.astro"
+import { SITE, TOPIC_HUBS, fmtDate, readingTime, seriesSlug } from "../../lib/site"
 
 export async function getStaticPaths() {
-  const posts = await getCollection("blog", ({ data }) => !data.draft);
+  const posts = await getCollection("blog", ({ data }) => !data.draft)
   return posts.map((post) => ({
     params: { slug: post.id },
     props: { post },
-  }));
+  }))
 }
 
 interface Props {
-  post: CollectionEntry<"blog">;
+  post: CollectionEntry<"blog">
 }
 
-const { post } = Astro.props;
-const { title, description, date, updated, series, discussion } = post.data;
-const { Content, headings } = await render(post);
+const { post } = Astro.props
+const { title, description, date, updated, series, discussion } = post.data
+const { Content, headings } = await render(post)
 
 // series navigation
 const seriesPosts = series
   ? (await getCollection("blog", ({ data }) => !data.draft))
       .filter((p) => p.data.series?.name === series.name)
       .sort((a, b) => (a.data.series?.part ?? 0) - (b.data.series?.part ?? 0))
-  : [];
-const prev = series
-  ? seriesPosts.find((p) => p.data.series?.part === series.part - 1)
-  : undefined;
-const next = series
-  ? seriesPosts.find((p) => p.data.series?.part === series.part + 1)
-  : undefined;
+  : []
+const prev = series ? seriesPosts.find((p) => p.data.series?.part === series.part - 1) : undefined
+const next = series ? seriesPosts.find((p) => p.data.series?.part === series.part + 1) : undefined
 
 const jsonLd = [
   {
@@ -53,7 +50,7 @@ const jsonLd = [
       sameAs: [SITE.linkedin],
     },
   },
-];
+]
 ---
 
 <Base
@@ -65,38 +62,48 @@ const jsonLd = [
   jsonLd={jsonLd}
   current="blog"
 >
-  <main class="shell">
+  <div class="reading-bar" aria-hidden="true" inert>
+    <a href="/" class="reading-home" aria-label="howtf.io home"><SiteMark /></a>
+    <a href="#main" class="reading-location"
+      ><span class="reading-index"></span><span class="reading-heading">{title}</span></a
+    >
+    <button type="button" data-open-contents>Contents</button>
+    <button type="button" class="theme-toggle" aria-label="Switch to dark theme"
+      ><span class="theme-disc" aria-hidden="true"></span></button
+    >
+    <a href="#main" class="reading-top" aria-label="Back to article title">↑</a>
+  </div>
+  <main class="page post-page" id="main">
+    <header class="post-header">
+      <h1>{title}</h1>
+      <p class="dek">{description}</p>
+      <p class="meta">
+        <b>{SITE.author}</b>
+        <span>{fmtDate(date)}</span>
+        {updated && <span>updated {fmtDate(updated)}</span>}
+        <span>{readingTime(post.body ?? "")}</span>
+        {
+          series && (
+            <span class="chip-pill">
+              {series.name} · Part {series.part}
+            </span>
+          )
+        }
+        {
+          post.data.tags
+            .filter((t) => TOPIC_HUBS[t])
+            .map((t) => (
+              <a class="chip-pill" href={TOPIC_HUBS[t].href}>
+                {t} deep dives
+              </a>
+            ))
+        }
+      </p>
+    </header>
     <div class="post-grid">
       <BacktraceToc headings={headings} />
 
       <article class="article">
-        <header class="post-header">
-          <h1>{title}</h1>
-          <p class="dek">{description}</p>
-          <p class="meta">
-            <b>{SITE.author}</b>
-            <span>{fmtDate(date)}</span>
-            {updated && <span>updated {fmtDate(updated)}</span>}
-            <span>{readingTime(post.body ?? "")}</span>
-            {
-              series && (
-                <span class="chip-pill">
-                  {series.name} · Part {series.part}
-                </span>
-              )
-            }
-            {
-              post.data.tags
-                .filter((t) => TOPIC_HUBS[t])
-                .map((t) => (
-                  <a class="chip-pill" href={TOPIC_HUBS[t].href}>
-                    {t} deep dives
-                  </a>
-                ))
-            }
-          </p>
-        </header>
-
         <div class="article-body">
           <Content />
         </div>
@@ -120,7 +127,7 @@ const jsonLd = [
                     Part {next.data.series!.part}: {next.data.title} →
                   </a>
                 )}
-                </div>
+              </div>
             </div>
           )
         }
@@ -143,11 +150,26 @@ const jsonLd = [
       </article>
     </div>
   </main>
+  <dialog class="contents-dialog" aria-label="Article contents">
+    <header class="dialog-header">
+      <span>backtrace</span><button data-close-dialog aria-label="Close contents">Close ×</button>
+    </header><nav class="contents-list" aria-label="Jump to section"></nav>
+  </dialog>
+  <dialog class="figure-dialog" aria-label="Expanded diagram">
+    <header class="dialog-header">
+      <span class="inspection-title">Diagram</span><div>
+        <button data-inspect-size aria-pressed="false">Actual size</button><button
+          data-close-dialog
+          aria-label="Close diagram">Close ×</button
+        >
+      </div>
+    </header><div class="inspection-content"></div>
+  </dialog>
 </Base>
 
 <script>
-  import { mountLoaderStepper } from "../../scripts/loader-stepper";
-  document
-    .querySelectorAll<HTMLElement>("[data-loader-stepper]")
-    .forEach(mountLoaderStepper);
+  import { mountReadingExperience } from "../../scripts/reading-experience"
+  import { mountLoaderStepper } from "../../scripts/loader-stepper"
+  document.querySelectorAll<HTMLElement>("[data-loader-stepper]").forEach(mountLoaderStepper)
+  mountReadingExperience()
 </script>

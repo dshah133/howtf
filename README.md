@@ -4,8 +4,8 @@ Deep dives from the bottom of the systems stack. Every post starts with a real
 bug and the question: *howtf did that happen?*
 
 Built with [Astro](https://astro.build) +
-[Expressive Code](https://expressive-code.com). Design direction: **Core Dump**
-— dark-first, terminal-native, warm ember (see `DESIGN.md`).
+[Expressive Code](https://expressive-code.com). Design direction: warm paper, green ink, and a quiet reading column
+with light and dark themes (see `DESIGN.md`).
 
 ## Develop
 

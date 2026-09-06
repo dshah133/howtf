@@ -26,17 +26,17 @@ const series = [...bySeries.entries()];
   canonical="/series/"
   current="series"
 >
-  <main class="shell">
+  <main class="page series-index" id="main">
     <div class="home-center archive">
-      <h1>// series</h1>
+      <h1><span class="heading-prefix" aria-hidden="true">//</span> series</h1>
       {
         series.map(([slug, s]) => (
           <div class="frame">
             <span class="frame-title">series</span>
             <span class="frame-tag">{s.parts.length} part{s.parts.length === 1 ? "" : "s"}</span>
-            <h3 style="font-family: var(--font-display); font-weight: 400; font-size: 1.2rem;">
+            <h2 style="font-family: var(--font-display); font-weight: 400; font-size: 1.2rem;">
               <a href={`/series/${slug}/`} style="text-decoration: none;">{s.name}</a>
-            </h3>
+            </h2>
             <ol class="series-parts">
               {s.parts.map((p) => (
                 <li>

@@ -8,7 +8,7 @@ interface Props {
 const { links = true } = Astro.props;
 ---
 
-<div class="frame">
+<div class="frame subscribe">
   <span class="frame-title">subscribe</span>
   <div class="subscribe-row">
     {links && <a href="/rss.xml">RSS</a>}
@@ -20,6 +20,7 @@ const { links = true } = Astro.props;
         type="email"
         name="email"
         required
+        autocomplete="email"
         placeholder="you@example.com"
       />
       <button type="submit">follow</button>
