@@ -232,13 +232,11 @@ button:disabled {
   font: 12px/1.7 var(--font-body);
   color: var(--muted);
 }
-.prompt {
-  font: normal clamp(52px, 6vw, 76px) / 1.08 var(--font-heading);
-  letter-spacing: -3px;
-  margin-top: 14px;
-}
-.prompt .name {
-  color: var(--text);
+.home-title {
+  max-width: 720px;
+  font: normal clamp(38px, 5vw, 54px) / 1.13 var(--font-heading);
+  letter-spacing: -1.5px;
+  text-wrap: balance;
 }
 .tilde {
   display: none;
@@ -541,53 +539,69 @@ button:disabled {
 .frame {
   min-width: 0;
 }
-/* Inline subscription remains unobtrusive and carries the original copy. */
+/* One signup section: identity and social links, then the email form. */
 .subscribe {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 32px;
   border-top: 1px solid var(--text);
-  padding: 25px 0 0;
+  padding-top: 25px;
   margin-top: 25px;
 }
-.subscribe > .frame-title {
-  display: block;
-  font: normal 28px var(--font-heading);
+.subscribe-intro .frame-title {
+  margin: 0;
+  font: normal 25px/1.25 var(--font-heading);
   color: var(--text);
-  margin-bottom: 22px;
 }
-.subscribe-row {
+.subscribe-links {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
   gap: 18px;
+  margin-top: 14px;
   font-size: 13px;
 }
-.subscribe-row form {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+.subscribe-form {
+  width: 100%;
+  max-width: 480px;
+  min-width: 0;
 }
-.subscribe-row label {
-  flex-basis: 100%;
+.subscribe-form label {
+  display: block;
+  margin-bottom: 10px;
   font-size: 14px;
+  line-height: 1.7;
   color: var(--muted);
 }
-.subscribe-row input {
+.subscribe-fields {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+.subscribe-fields input {
+  flex: 1;
   min-width: 0;
-  width: 250px;
+  width: 100%;
+  min-height: 46px;
   background: transparent;
   border: 1px solid var(--border);
-  border-bottom-color: var(--muted);
   padding: 10px 12px;
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.4;
 }
-.subscribe-row button {
-  font-size: 13px;
+.subscribe-fields button {
+  flex-shrink: 0;
+  min-height: 46px;
   padding: 10px 18px;
   border: 1px solid var(--text);
   background: var(--text);
   color: var(--bg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.page:has(.subscribe) {
+  padding-bottom: 36px;
 }
 .site-footer {
   max-width: 1100px;
@@ -1216,9 +1230,6 @@ dialog::backdrop {
   .article-body .diagram {
     margin: 28px 0;
   }
-  .subscribe-row form {
-    margin-left: 0;
-  }
   .series-index .frame {
     padding-left: 115px;
   }
@@ -1265,9 +1276,9 @@ dialog::backdrop {
     padding: 34px 0 42px;
     margin: 0 22px;
   }
-  .prompt {
-    font-size: 59px;
-    letter-spacing: -2.5px;
+  .home-title {
+    font-size: 36px;
+    letter-spacing: -0.8px;
   }
   .manifesto {
     padding-bottom: 34px;
@@ -1395,27 +1406,12 @@ dialog::backdrop {
     font-size: 14px;
   }
   .subscribe {
+    grid-template-columns: 1fr;
+    gap: 22px;
     padding-top: 23px;
   }
-  .subscribe-row {
-    gap: 16px;
-    display: flex;
-  }
-  .subscribe-row form {
-    width: 100%;
-    gap: 10px;
-  }
-  .subscribe-row input {
-    width: calc(100% - 90px);
-    font-size: 16px;
-    padding: 10px;
-    flex: 1;
-  }
-  .subscribe-row button {
-    padding: 11px 14px;
-  }
-  .subscribe-row label {
-    font-size: 14px;
+  .page:has(.subscribe) {
+    padding-bottom: 30px;
   }
   .site-footer {
     margin: 0 22px;
@@ -1423,8 +1419,8 @@ dialog::backdrop {
     gap: 20px;
   }
   .site-footer nav {
-    margin: 0;
-    flex-basis: 100%;
+    margin-left: auto;
+    flex-basis: auto;
     gap: 22px;
     font-size: 12px;
     flex-wrap: wrap;
@@ -1646,34 +1642,6 @@ dialog::backdrop {
   scroll-margin-top: 100px;
 }
 
-/* Align the signup with the same margin used by lists and articles. */
-.subscribe {
-  display: grid;
-  grid-template-columns: 122px minmax(0, 1fr);
-  gap: 26px;
-}
-.subscribe > .frame-title {
-  font-size: 25px;
-  margin: 3px 0 0;
-}
-.subscribe-row form {
-  margin-left: 0;
-}
-.subscribe-row:has(> a) form {
-  margin-left: auto;
-}
-@media (max-width: 640px) {
-  .subscribe {
-    display: block;
-  }
-  .subscribe > .frame-title {
-    margin-bottom: 20px;
-  }
-  .subscribe-row:has(> a) form {
-    margin-left: 0;
-  }
-}
-
 /* Final hierarchy and wrapping polish; the original words are retained. */
 .heading-prefix {
   font: 18px/1.4 var(--font-mono);
@@ -1780,5 +1748,15 @@ dialog,
   .reading-home .site-mark {
     width: 25px;
     height: 25px;
+  }
+}
+
+@media (max-width: 360px) {
+  .subscribe-fields {
+    flex-direction: column;
+  }
+  .subscribe-fields button {
+    align-self: flex-start;
+    min-width: 90px;
   }
 }

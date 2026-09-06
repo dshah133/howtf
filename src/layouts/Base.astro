@@ -71,13 +71,14 @@ const ogImageUrl = new URL(ogImage, Astro.site).href
     <script defer data-domain="howtf.io" src="https://plausible.io/js/script.outbound-links.js"
     ></script>
   </head>
-  <body>
+  <body id="top">
     <a class="skip-link" href="#main">Skip to content</a>
     {
       header && (
         <header class="site-header">
           <a class="wordmark" href="/" aria-label="howtf.io home">
-            <SiteMark />howtf.io
+            <SiteMark />
+            howtf.io
           </a>
           <nav aria-label="Main navigation">
             {["blog", "series", "tools", "about"].map((route) => (
@@ -98,12 +99,8 @@ const ogImageUrl = new URL(ogImage, Astro.site).href
     }
     <slot />
     <footer class="site-footer">
-      <div><a class="footer-name" href="/"><SiteMark />howtf.io</a><span>{SITE.author}</span></div>
-      <nav aria-label="Footer navigation">
-        <a href="/blog/">All posts</a><a href="/topics/rdma/">RDMA</a>
-        <a href={SITE.linkedin}>LinkedIn ↗</a><a href="/rss.xml">RSS ↗</a>
-      </nav>
-      <p>Deep dives from the bottom of the systems stack.</p>
+      <span>{SITE.author}</span>
+      <nav aria-label="Footer navigation"><a href="#top">Back to top ↑</a></nav>
     </footer>
     <script>
       const toggles = [...document.querySelectorAll<HTMLButtonElement>(".theme-toggle")]

@@ -1,20 +1,28 @@
 ---
-import { SITE } from "../lib/site";
+import { SITE } from "../lib/site"
 
 interface Props {
-  /** Show the RSS / LinkedIn links before the form. Off on pages that already list them. */
-  links?: boolean;
+  /** Off on pages that already list the social links. */
+  links?: boolean
 }
-const { links = true } = Astro.props;
+const { links = true } = Astro.props
 ---
 
-<div class="frame subscribe">
-  <span class="frame-title">subscribe</span>
-  <div class="subscribe-row">
-    {links && <a href="/rss.xml">RSS</a>}
-    {links && <a href={SITE.linkedin}>LinkedIn</a>}
-    <form action={SITE.newsletterAction} method="post" target="_blank">
-      <label for="nl-email">a deep dive every month or two:</label>
+<section class="subscribe" aria-labelledby="subscribe-heading">
+  <div class="subscribe-intro">
+    <h2 id="subscribe-heading" class="frame-title">subscribe</h2>
+    {
+      links && (
+        <div class="subscribe-links">
+          <a href="/rss.xml">RSS</a>
+          <a href={SITE.linkedin}>LinkedIn</a>
+        </div>
+      )
+    }
+  </div>
+  <form class="subscribe-form" action={SITE.newsletterAction} method="post" target="_blank">
+    <label for="nl-email">a deep dive every month or two:</label>
+    <div class="subscribe-fields">
       <input
         id="nl-email"
         type="email"
@@ -24,6 +32,6 @@ const { links = true } = Astro.props;
         placeholder="you@example.com"
       />
       <button type="submit">follow</button>
-    </form>
-  </div>
-</div>
+    </div>
+  </form>
+</section>
