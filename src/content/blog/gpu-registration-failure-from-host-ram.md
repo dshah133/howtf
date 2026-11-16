@@ -1,8 +1,7 @@
 ---
 title: "howtf did a GPU memory-registration error come from host RAM?"
 description: "A production debugging story across NCCL, ConnectX, nvidia-peermem, DMA-BUF, retsnoop, and an inherited six-gigabyte CMA reserve. Part 2 of Memory Registration, All the Way Down."
-date: 2026-08-23
-updated: 2026-09-05
+date: 2026-09-14
 series:
   name: "Memory Registration, All the Way Down"
   part: 2

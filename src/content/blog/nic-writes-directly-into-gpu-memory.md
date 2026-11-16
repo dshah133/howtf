@@ -1,7 +1,7 @@
 ---
 title: "howtf does a NIC write directly into GPU memory?"
 description: "A ground-up walk through DMA, RDMA, PCIe BARs, memory registration, MKeys, nvidia-peermem, and DMA-BUF. Part 1 of Memory Registration, All the Way Down."
-date: 2026-08-20
+date: 2026-08-03
 updated: 2026-09-05
 series:
   name: "Memory Registration, All the Way Down"

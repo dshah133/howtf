@@ -1,7 +1,7 @@
 ---
 title: "howtf did the training job hang after the training was done?"
 description: "An NCCL 2.17.1 deep dive: an abort path waiting for a peer-visible close, a file descriptor duplicated by fork(), and the shutdown() that 2.18.1 added."
-date: 2026-08-18
+date: 2026-06-22
 updated: 2026-09-05
 tags: [nccl, pytorch, linux, tcp, fork, sockets]
 draft: false

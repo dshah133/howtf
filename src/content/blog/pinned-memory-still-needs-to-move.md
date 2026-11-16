@@ -1,8 +1,7 @@
 ---
 title: "howtf can pinned memory still need to move?"
 description: "The Linux memory-management mechanism underneath the incident: pages, pageblocks, CMA, FOLL_PIN, FOLL_LONGTERM, migration, and the second pin that returned ENOMEM. Part 3 of Memory Registration, All the Way Down."
-date: 2026-08-25
-updated: 2026-09-05
+date: 2026-10-26
 series:
   name: "Memory Registration, All the Way Down"
   part: 3
