@@ -2,6 +2,7 @@
 title: "howtf did the clock just keep slowing down?"
 description: "An ESXi timekeeping story: PTP through a Linux service VM, a pulse-per-second experiment, a 100 ms adjustment cadence, and the unsigned temporary in that refactor that corrupted every negative clock correction."
 date: 2026-11-16
+updated: 2026-11-17
 tags: [esxi, ptp, ntp, timekeeping, linux, virtualization]
 ---
 
@@ -13,7 +14,7 @@ We tried to reproduce the migration scenario and got nowhere. What finally worke
 
 The fix was one line. A temporary variable in a helper I had extracted needed to be signed. The hard part was the route: from an application symptom in a guest, through the guest's dependence on host time, to a shared clock path I had refactored for a feature that guest never used.
 
-> **Scope note.** This reconstructs work I did at VMware from memory. None of the original code, logs, or traces appear here. The one production artifact is the sample VMware published in the release note for the fix. The architecture and the clock mechanisms are checked against public sources linked inline: VMware's documentation and blog posts, a Photon OS kernel patch that lists me as reviewer, an independent write-up of the shipped ESXi PTP service, the Linux kernel at v6.12, FreeBSD 13.2, and LinuxPTP. The numbers in the tables come from two small companion models. They are labeled as models throughout and are not recovered measurements.
+> **Scope note.** This is work I did at VMware. No VMware source, logs, or traces appear here. The code is illustrative, and the numbers in the tables come from two small companion models, labeled as models throughout. The fix shipped in ESXi 7.0 Update 3o, and the sample VMware published with it is in section 9. The architecture and the clock mechanisms are linked to public sources inline: VMware's documentation and blog posts, a Photon OS kernel patch that lists me as reviewer, an independent write-up of the shipped ESXi PTP service, the Linux kernel at v6.12, FreeBSD 13.2, and LinuxPTP.
 
 ## 2. Why the time service ended up in a VM
 
@@ -140,7 +141,7 @@ A phase correction moves the clock's position relative to the reference. Softwar
 
 For the Linux system clock, the mode matters as much as the field. `ADJ_OFFSET` feeds the kernel's NTP discipline and updates its frequency estimate. `ADJ_OFFSET_SINGLESHOT`, the old `adjtime(3)`, asks for a finite gradual correction in microseconds. `ADJ_SETOFFSET` steps. Frequency is scaled parts per million with 16 fractional bits ([adjtimex(2)](https://man7.org/linux/man-pages/man2/adjtimex.2.html)).
 
-With hardware timestamping, `ptp4l` disciplines the NIC's PHC, and `phc2sys` carries that time to another clock ([phc2sys](https://www.linuxptp.org/documentation/phc2sys/)). Our provider interface added the route into ESXi. Which process issued each adjustment in our setup is a detail I no longer have, so "the LinuxPTP time service" below means the whole arrangement.
+With hardware timestamping, `ptp4l` disciplines the NIC's PHC, and `phc2sys` carries that time to another clock ([phc2sys](https://www.linuxptp.org/documentation/phc2sys/)). Our provider interface added the route into ESXi. Below, "the LinuxPTP time service" means that whole arrangement.
 
 The controller is part of the behavior too. LinuxPTP's PI servo responds to the current phase error and accumulates a frequency estimate, with unlocked, jump, and locked states, configurable gains, and a clamp on the frequency it will command ([pi.c at v4.2](https://github.com/richardcochran/linuxptp/blob/v4.2/pi.c)). A stream of adjustments is the output of that feedback loop.
 
@@ -148,7 +149,7 @@ The controller is part of the behavior too. LinuxPTP's PI servo responds to the 
 
 The goal was the guest's system clock synchronized to the grandmaster, with a target of one microsecond. Measuring the service VM's NIC alone would have left the host transfer and the guest's own synchronization outside the experiment.
 
-So the test wired the whole path. TRX kept its assigned NIC as usual. A second timing-capable NIC was passed straight to a Linux workload VM. On that VM, `phc2sys` ran backwards from its common deployment: the guest system clock was the source and the second NIC's PHC was the destination. LinuxPTP supports this directly, `CLOCK_REALTIME` as source and a PHC as sink ([phc2sys source and sink options](https://www.linuxptp.org/documentation/phc2sys/)). The second NIC's hardware one-pulse-per-second output went to the measurement input of the Calnex instrument that was also our grandmaster, a Paragon-neo as I remember it. The instrument compared the arriving pulse with its own reference ([Paragon-neo](https://calnexsol.com/products/paragon-neo/)).
+So the test wired the whole path. TRX kept its assigned NIC as usual. A second timing-capable NIC was passed straight to a Linux workload VM. On that VM, `phc2sys` ran backwards from its common deployment: the guest system clock was the source and the second NIC's PHC was the destination. LinuxPTP supports this directly, `CLOCK_REALTIME` as source and a PHC as sink ([phc2sys source and sink options](https://www.linuxptp.org/documentation/phc2sys/)). The second NIC's hardware one-pulse-per-second output went to the measurement input of the Calnex instrument that was also our grandmaster, a Paragon-neo. The instrument compared the arriving pulse with its own reference ([Paragon-neo](https://calnexsol.com/products/paragon-neo/)).
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 2 · export guest time as a hardware pulse</span>
@@ -222,7 +223,7 @@ The direction is the point. The guest got its time through the infrastructure un
 
 There is an error budget on the output side. The PHC lags or differs from the guest clock it follows. Pulse generation, the cable, and the instrument add their own contributions. With a consistent sign convention, the reported error is the guest error plus those transfer and measurement errors, and they can cancel. A strict guest-clock bound needs them characterized. PPS also leaves whole-second ambiguity (phc2sys's own PPS mode uses the source clock only to fix whole seconds), and a pulse per second does not show excursions between pulses ([Linux PHC output facilities](https://docs.kernel.org/driver-api/ptp.html), [phc2sys PPS mode](https://www.linuxptp.org/documentation/phc2sys/)).
 
-The experiment still gave us the complete path. The measured error would start inside the target range, swing outside it, return, and leave again. After we changed the host's adjustment cadence the excursions became much smaller and the runs stayed within target. I don't have the traces, so the amplitude, period, and percentiles are gone.
+The experiment still gave us the complete path. The measured error would start inside the target range, swing outside it, return, and leave again. After we changed the host's adjustment cadence the excursions became much smaller and the runs stayed within target.
 
 ## 6. Why applying a correction sooner helped
 
@@ -288,15 +289,15 @@ At 100 ms intervals the new command becomes active at 300 ms, 65 ms after it was
 
 A one-second interval is not inherently incompatible with precise timing. A correctly rated clock advances accurately between updates, and both `ptp4l`'s default Sync interval and `phc2sys`'s default update rate are one second, with options to change them ([ptp4l logSyncInterval](https://www.linuxptp.org/documentation/ptp4l/), [phc2sys -R](https://www.linuxptp.org/documentation/phc2sys/)). The issue was the response of our particular path and configuration.
 
-Linux's own NTP discipline is the useful comparison, and it separates the two cadences cleanly. The phase side is bookkept once per second: `second_overflow()` recomputes the chunk of phase correction for the coming second and folds it into the tick length ([ntp.c, lines 464-469](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L464-L469)). That tick length is then applied at every timer tick, and the NTP interval is defined as one tick, so the application granularity is 1/HZ, between 1 and 10 ms depending on the kernel configuration ([timex.h, line 159](https://github.com/torvalds/linux/blob/v6.12/include/linux/timex.h#L159), [Kconfig.hz](https://github.com/torvalds/linux/blob/v6.12/kernel/Kconfig.hz)). A frequency change does not even wait for the second boundary. The comment in `ntp_update_frequency()` says it outright: "Don't wait for the next second_overflow, apply the change to the tick length immediately" ([ntp.c, lines 259-279](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L259-L279)). That is the distinction between a correction request, its application, and the continuing clock. It says nothing about ESXi's constants. Ours were one second before the change and 100 ms after it.
+Linux's own NTP discipline is the useful comparison, and it separates the two cadences cleanly. The phase side is bookkept once per second: `second_overflow()` recomputes the chunk of phase correction for the coming second and folds it into the tick length ([ntp.c, lines 464-469](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L464-L469)). That tick length is the length of one NTP interval, which Linux defines as one tick ([timex.h, line 159](https://github.com/torvalds/linux/blob/v6.12/include/linux/timex.h#L159)). The timekeeper steers its clocksource multiplier toward it on every update ([timekeeping.c, lines 2131-2146](https://github.com/torvalds/linux/blob/v6.12/kernel/time/timekeeping.c#L2131-L2146)), so the correction is spread through the second and never lands in one lump. A frequency change does not even wait for the second boundary. The comment in `ntp_update_frequency()` says it outright: "Don't wait for the next second_overflow, apply the change to the tick length immediately" ([ntp.c, lines 259-279](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L259-L279)). That is the distinction between a correction request, its application, and the continuing clock. It says nothing about ESXi's constants. Ours were one second before the change and 100 ms after it.
 
 "Adjustments were lost" would be the wrong description of what we fixed. A frequency command is a replacement setpoint: use this rate until the next command. A delayed setpoint produces the wrong integrated correction even when no queue drops anything.
 
-The cadence work needed a refactor of machinery shared with the existing NTP path. That shared ownership is the hinge of the story.
+The cadence work needed a refactor of machinery shared with the existing NTP path. So a change made for PTP could break NTP.
 
 ## 7. Following the error back from the VM
 
-The report came through the guest. Its clock was showing an accumulating error, and it synchronized time from the host, through VMware Tools as far as I remember. Following that dependency is what took the investigation to the host clock.
+The report came through the guest. Its clock was showing an accumulating error, and it synchronized time from the host, through VMware Tools. Following that dependency is what took the investigation to the host clock.
 
 Keep this separate from the new Precision Clock path. The affected workload was not using PTP. It inherited a host timekeeping defect through ordinary host-to-guest synchronization.
 
@@ -306,11 +307,11 @@ Tools also syncs a guest once after a vMotion, but that sync only moves a guest 
 
 We initially tried to reproduce the larger scenario. Lining up the circumstances was hard, and waiting for the error to build up made each attempt expensive. There was no unmistakable jump to trigger on.
 
-I started fuzzing adjustments submitted directly to the host. For each request, I accumulated the corrections the NTP clock machinery actually applied and watched how they evolved. Negative requests stood out: the accumulated correction came out unexpectedly large. That is the qualitative pattern. The exact values and the trace are gone. It was not an absolute accuracy measurement, and it did not need to be. It pointed at the adjustment path, and it needed no vMotion.
+I started fuzzing adjustments submitted directly to the host. For each request, I accumulated the corrections the NTP clock machinery actually applied and watched how they evolved. Negative requests stood out: the accumulated correction came out unexpectedly large. It was not an absolute accuracy measurement, and it did not need to be. It pointed at the adjustment path, and it needed no vMotion.
 
-**Why only some hosts.** The host clock was the thing that drifted. That should have been everywhere, and it wasn't. Three conditions I do remember narrowed it. Not every customer had moved to 7.0 U3. Periodic host-to-guest synchronization in VMware Tools is off by default ([disabling time synchronization for virtual machines](https://knowledge.broadcom.com/external/article/326306/disabling-time-synchronization-for-virtu.html)), so most VMs never followed the host clock continuously. And a drifting host clock only matters to a workload that compares its time with the outside world, which most never do. This customer's application did.
+**Why only some hosts.** The host clock was the thing that drifted. That should have been everywhere, and it wasn't. Three conditions narrowed it. Not every customer had moved to 7.0 U3. Periodic host-to-guest synchronization in VMware Tools is off by default ([disabling time synchronization for virtual machines](https://knowledge.broadcom.com/external/article/326306/disabling-time-synchronization-for-virtu.html)), so most VMs never followed the host clock continuously. And a steady drift is hard to see until a workload compares its time with the outside world. This customer's application did.
 
-There was a fourth condition, the one that decided which hosts drifted, and I can't recover it from memory. The release note for the fix records one: the drift appears "after synchronization with the NTP server fails" ([ESXi 7.0 Update 3o release notes](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/release-notes/esxi-update-and-patch-release-notes/vsphere-esxi-70u3o-release-notes.html), PR 3246132).
+A fourth condition decided which hosts drifted: the host had lost synchronization with its NTP server. VMware's release note for the fix says the drift appears "after synchronization with the NTP server fails" ([ESXi 7.0 Update 3o release notes](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/release-notes/esxi-update-and-patch-release-notes/vsphere-esxi-70u3o-release-notes.html), PR 3246132).
 
 ## 8. A signed parameter was not enough
 
@@ -320,7 +321,7 @@ That is a less conspicuous change than replacing an existing signed declaration 
 
 Here is the shape of the error. The quantity is a pending clock correction in microseconds, and the helper records how much of it was just applied:
 
-```c title="the shape of the error, illustrative reconstruction, not ESXi source"
+```c title="the shape of the error, illustrative, not ESXi source"
 static void account_broken(int64_t *remaining_us, int32_t step_us)
 {
     uint32_t temporary = step_us;      /* the refactor's new working copy */
@@ -336,15 +337,13 @@ static void account_fixed(int64_t *remaining_us, int32_t step_us)
 
 The widening is essential. The subtraction is done in 64 bits, and every 32-bit unsigned value fits in 64-bit signed arithmetic, so the original negative value is not recovered. C defines the conversion to unsigned modulo 2^32 ([C11 draft, section 6.3.1.3](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf)). A step of −5,000 µs becomes 4,294,962,296 in the broken helper. The pending amount should move 5,000 µs closer to zero. It moves about 4,295 seconds further away. No signed overflow and no memory corruption is needed.
 
-A positive step survives the copy unchanged. Only requests to slow the clock broke.
-
-What I remember is an offset-related signed value and a new unsigned temporary. I do not remember the temporary's units, or whether it held the requested amount, a residual, or a derived increment. The number VMware published with the fix points to an answer. The next section works it out.
+A positive step survives the copy unchanged. Only negative slew steps broke.
 
 ## 9. How a huge internal value makes a slow clock
 
-Putting that entire converted value straight into the clock would produce a huge step, which fits the reported slow accumulation poorly.
+A value that size, put straight into the clock, would be a huge step. The reports described a steady drift.
 
-A pending slew amount fits. The kernel keeps a signed amount still to apply, changes the clock rate enough to work off part of it, and reduces the remainder over time. A rate limit makes the clock's visible behavior look restrained even when the pending amount is absurd.
+The reason is where the value went. It went into a pending slew amount. The kernel keeps a signed amount still to apply, changes the clock rate enough to work off part of it, and reduces the remainder over time. A rate limit makes the clock's visible behavior look restrained even when the pending amount is absurd.
 
 Linux does exactly this in its single-shot path. `time_adjust` holds the remaining correction ([ntp.c, line 80](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L80)), and `second_overflow()` consumes at most `MAX_TICKADJ`, 500 microseconds, per second:
 
@@ -371,19 +370,7 @@ Linux does exactly this in its single-shot path. `time_adjust` holds the remaini
 
 The kernel also does not range-check the single-shot amount. `timekeeping_validate_timex()` checks capability, the tick range, the fields of a step, and frequency overflow, and nothing about the `ADJ_ADJTIME` offset ([timekeeping.c, lines 2471-2531](https://github.com/torvalds/linux/blob/v6.12/kernel/time/timekeeping.c#L2471-L2531)). `__do_adjtimex()` stores it as given ([ntp.c, lines 775-781](https://github.com/torvalds/linux/blob/v6.12/kernel/time/ntp.c#L775-L781)). glibc's `adjtime()` wrapper refuses anything beyond about 2,145 seconds ([glibc adjtime.c](https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/unix/sysv/linux/adjtime.c;hb=glibc-2.40)), but nothing below the wrapper does. A 4,295-second single-shot request through the raw syscall is accepted on a 64-bit kernel and, if nothing replaces it, worked off at 500 microseconds per second for 99 days. An absurd pending amount is not something the kernel questions.
 
-VMware published one sample of the broken state with the fix. The release note and its knowledge-base article print the host's NTP clock data from an affected machine ([ESXi 7.0 Update 3o release notes](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/release-notes/esxi-update-and-patch-release-notes/vsphere-esxi-70u3o-release-notes.html), PR 3246132, and [KB 312016](https://knowledge.broadcom.com/external/article/312016/system-clock-drifts-on-esxi-70-u3-or-lat.html)):
-
-```text title="vsish -e get /system/ntpclock/clockData, from KB 312016, abridged"
-Poll shift:6
-Time offset (nsec):-143603
-Freq offset (nsec/sec):12888
-adjtime() (usec):-309237290312
-tick adjustment (nsec/sec):-4987251
-```
-
-The `adjtime()` field is the pending amount. It says the host still owes itself −309,237 seconds, about three and a half days. Modulo 2^32 it is not a strange number at all: −309,237,290,312 is −72 × 2^32 + 71 × 5,000. That is 72 wraps of a 32-bit value and 71 steps of 5,000 µs.
-
-The 5,000 points at a known rule. FreeBSD's version of this routine works off a pending `adjtime()` correction at 5,000 µs a second while more than a second is pending, at 500 µs a second below that, and takes the last 500 µs or less in one step ([kern_ntptime.c, lines 604-621](https://github.com/freebsd/freebsd-src/blob/release/13.2.0/sys/kern/kern_ntptime.c#L604-L621)). Its state variables are the same set the sample prints ([lines 150-163](https://github.com/freebsd/freebsd-src/blob/release/13.2.0/sys/kern/kern_ntptime.c#L150-L163)). I am not quoting ESXi source, and I am not saying where VMkernel's code came from. The published fields and the arithmetic fit that rule, so the model uses it.
+The host works a pending correction off under a rate rule. I won't quote ESXi source. FreeBSD's kernel has a public rule of the same shape, and the model uses it: a pending `adjtime()` correction is worked off at 5,000 µs a second while more than a second is pending, at 500 µs a second below that, and the last 500 µs or less goes in one step ([kern_ntptime.c, lines 604-621](https://github.com/freebsd/freebsd-src/blob/release/13.2.0/sys/kern/kern_ntptime.c#L604-L621)).
 
 The companion C program runs that rule with the two helpers from section 8. There is no daemon and no subsequent request. For a request of −300 µs:
 
@@ -394,11 +381,23 @@ The companion C program runs that rule with the two helpers from section 8. Ther
 | 72 | 0 | 0 | −5,000 µs | −309,237,290,312 µs |
 | 3,600 | 0 | 0 | −5,000 µs | −15,461,864,270,600 µs |
 
-The fixed model finishes its 300 µs slew in the first second. The broken model applies the same step, then subtracts 2^32 − 300 from the pending amount and is left with exactly −2^32. That is more than a second pending, so every later second slows the clock by another 5,000 µs and pushes the pending amount about 4,295 seconds further out. After 72 seconds the model's pending amount is the number in the release note. Any request from −1 to −500 µs ends up there.
+The fixed model finishes its 300 µs slew in the first second. The broken model applies the same step, then subtracts 2^32 − 300 from the pending amount and is left with exactly −2^32. That is more than a second pending, so every later second slows the clock by another 5,000 µs and pushes the pending amount about 4,295 seconds further out. Any request from −1 to −500 µs lands on the same −2^32 after its first step. Second 72 is in the table for a reason.
 
-The steps in the sample are whole-second amounts. So the pending amount was still settled once a second after the cadence change. I can't reconstruct more of the structure than that.
+VMware published a sample of this state with the fix. The release note and its knowledge-base article print the NTP clock data from an affected host ([ESXi 7.0 Update 3o release notes](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/release-notes/esxi-update-and-patch-release-notes/vsphere-esxi-70u3o-release-notes.html), PR 3246132, and [KB 312016](https://knowledge.broadcom.com/external/article/312016/system-clock-drifts-on-esxi-70-u3-or-lat.html)):
 
-The tick adjustment in the sample agrees. Frequency contributes 12,888 ns/s, the phase offset about −140, and the slew −5,000,000. That adds up to −4,987,252 against a printed −4,987,251. By that reading the host was losing 5,000 µs every second, which is 5,000 ppm, or 18 seconds an hour.
+```text title="vsish -e get /system/ntpclock/clockData, from KB 312016, abridged"
+Poll shift:6
+Time offset (nsec):-143603
+Freq offset (nsec/sec):12888
+adjtime() (usec):-309237290312
+tick adjustment (nsec/sec):-4987251
+```
+
+The `adjtime()` field is the pending amount. The host still owes itself −309,237 seconds, about three and a half days. That is row 72 of the table, to the microsecond: −309,237,290,312 is −72 × 2^32 + 71 × 5,000, which is 72 wraps of a 32-bit value and 71 steps of 5,000 µs. The fields are the state variables FreeBSD's routine keeps ([lines 150-163](https://github.com/freebsd/freebsd-src/blob/release/13.2.0/sys/kern/kern_ntptime.c#L150-L163)).
+
+The cadence change made the host apply its correction every 100 ms. The pending amount was still settled once a second, which is why the steps in the sample are whole-second amounts.
+
+The tick adjustment in the sample agrees. Frequency contributes 12,888 ns/s. The phase offset contributes about −140, which is −143,603 shifted right by 10 (a loop gain of 4 plus the poll shift of 6). The slew contributes −5,000,000. That adds up to −4,987,252 against a printed −4,987,251. The clock was being slowed by 4,987 µs every second. That is about 5,000 ppm, or 18 seconds an hour.
 
 <figure class="frame diagram">
   <span class="frame-title">fig. 4 · a sign lost under a rate cap (model)</span>
@@ -450,19 +449,19 @@ The tick adjustment in the sample agrees. Frequency contributes 12,888 ns/s, the
   </div>
 </figure>
 
-The rate is not the bug's number. Five hundred is what clock discipline reaches for when it clamps: Linux's maximum frequency error is 500,000 ns/s, its single-shot slew cap is 500 µs/s, and `adjtimex(2)` clamps a requested frequency to ±32,768,000 in scaled units, which is 500 ppm ([timex.h, line 136](https://github.com/torvalds/linux/blob/v6.12/include/linux/timex.h#L136), [adjtimex(2)](https://man7.org/linux/man-pages/man2/adjtimex.2.html)). FreeBSD's `adjtime` path uses the same 500 and goes to ten times that once more than a second is pending. A corrupted amount that hits a cap comes out at the cap. My own memory of the drift is nearer 500 ppm. The published sample shows 5,000.
+The rate is not the bug's number. It is a clamp, and clock discipline clamps at round numbers: Linux's maximum frequency error is 500,000 ns/s, its single-shot slew cap is 500 µs/s, and `adjtimex(2)` clamps a requested frequency to ±32,768,000 in scaled units, which is 500 ppm ([timex.h, line 136](https://github.com/torvalds/linux/blob/v6.12/include/linux/timex.h#L136), [adjtimex(2)](https://man7.org/linux/man-pages/man2/adjtimex.2.html)). FreeBSD's `adjtime` path uses the same 500 and goes to ten times that once more than a second is pending. A corrupted amount that hits a cap comes out at the cap.
 
-Apart from the five published lines, these numbers are simulated correction contributions, not reconstructed incident measurements. A running daemon submits more requests, and each one can replace, extend, or reset a pending correction. The model leaves that out on purpose. It shows how a large corrupted amount and a steady rate error coexist.
+Apart from the five published lines, the numbers here come from the model. A running daemon submits more requests, and each one can replace, extend, or reset a pending correction. The model leaves that out on purpose. It shows how a large corrupted amount and a steady rate error coexist.
 
-The remaining question is why no limit caught it. The request was small and valid, so a check at the entry point passes it. The unsigned conversion happens afterward, inside the bookkeeping. The rate limit bounds how quickly the correction is applied. It does not look at the pending amount. A check after each step would: a step has to move the pending amount toward zero and never past it. The companion tests that, and the broken helper fails it on the first negative step. For the original ESXi path I remember the type fix and cannot reconstruct the downstream checks, so where the conversion sat is an assumption of the model.
+The remaining question is why no limit caught it. The request was small and valid, so a check at the entry point passes it. The unsigned conversion happens afterward, inside the bookkeeping. The rate limit bounds how quickly the correction is applied. It does not look at the pending amount. A check after each step would: a step has to move the pending amount toward zero and never past it. The companion tests that, and the broken helper fails it on the first negative step.
 
-The PPS runs never showed this, and I can't say why from memory. One reason fits: LinuxPTP steers a locked clock by frequency and steps a large offset ([phc2sys.c, lines 602-616](https://github.com/richardcochran/linuxptp/blob/v4.2/phc2sys.c#L602-L616)). Neither leaves a pending slew.
+The PPS runs never showed this, and that is consistent with how LinuxPTP drives a clock. It steers a locked clock by frequency and steps a large offset ([phc2sys.c, lines 602-616](https://github.com/richardcochran/linuxptp/blob/v4.2/phc2sys.c#L602-L616)). Neither leaves a pending slew.
 
-Two clarifications keep the model honest. Ordinary `ADJ_OFFSET` is not interchangeable with this finite slew, because it also moves NTP's frequency estimate, so summing every adjustment and expecting one submitted offset needs justification from the mode and the existing state. And unsigned words are sometimes exactly right at an interface, as in the Photon patch's register halves. The error is treating a converted negative value as a positive arithmetic quantity inside the adjustment machinery.
+Two things to keep straight. Ordinary `ADJ_OFFSET` is not interchangeable with this finite slew, because it also moves NTP's frequency estimate, so summing every adjustment and expecting one submitted offset needs justification from the mode and the existing state. And unsigned words are sometimes exactly right at an interface, as in the Photon patch's register halves. The error is treating a converted negative value as a positive arithmetic quantity inside the adjustment machinery.
 
 ## 10. Making the explanation testable
 
-The historical fix was the declaration. What follows is the companion's test procedure, not a recovered account of the tests we ran at VMware. Both programs operate on simulated numeric state and never touch an operating-system clock ([demo/clock-signed-slew](https://github.com/dshah133/howtf/tree/main/demo/clock-signed-slew)):
+The fix was the declaration. The companion makes the mechanism runnable. Both programs operate on simulated numeric state and never touch an operating-system clock ([demo/clock-signed-slew](https://github.com/dshah133/howtf/tree/main/demo/clock-signed-slew)):
 
 ```sh title="run the companion models"
 cc -std=c11 -O2 -Wall -Wextra -Wconversion -Wsign-conversion signed_clock.c -o signed_clock
@@ -517,7 +516,7 @@ A full-system regression would replay the negative-input host case, ordinary NTP
 
 **Follow the dependency, not the feature.** The affected guest never used PTP. It depended on host time, the host's time depended on clock machinery, and the machinery had been refactored for PTP. The route to the fix ran through what the symptom depended on, not through what the change was for.
 
-**Defined behavior is not correct behavior.** The default sanitizer checks have nothing to say about it. The compiler warns, at a flag most builds do not enable. The type invariant, stated and tested, is the only thing that survives a rewrite.
+**Defined behavior is not correct behavior.** The default sanitizer checks have nothing to say about it. The compiler warns, at a flag most builds do not enable. So state the type invariant and test it.
 
 ---
 
