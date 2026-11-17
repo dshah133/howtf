@@ -1,6 +1,6 @@
 /*
- * Pending-slew model for the post "howtf did asking the clock to slow down
- * make it never stop?" (howtf.io). Illustrative, not ESXi, FreeBSD, or Linux source.
+ * Pending-slew model for the post "howtf did the clock just keep slowing
+ * down?" (howtf.io). Illustrative, not ESXi, FreeBSD, or Linux source.
  *
  * All quantities named *_us are microseconds. One step is one second.
  * No operating-system clocks, syscalls, sleeping, or network access.

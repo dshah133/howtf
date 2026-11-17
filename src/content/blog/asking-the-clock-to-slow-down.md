@@ -1,5 +1,5 @@
 ---
-title: "howtf did asking the clock to slow down make it never stop?"
+title: "howtf did the clock just keep slowing down?"
 description: "An ESXi timekeeping story: PTP through a Linux service VM, a pulse-per-second experiment, a 100 ms adjustment cadence, and the unsigned temporary in that refactor that corrupted every negative clock correction."
 date: 2026-11-16
 tags: [esxi, ptp, ntp, timekeeping, linux, virtualization]

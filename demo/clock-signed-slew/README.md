@@ -1,7 +1,7 @@
 # clock-signed-slew
 
-Two hardware-free numeric models for the post *howtf did asking the clock to
-slow down make it never stop?*
+Two hardware-free numeric models for the post *howtf did the clock just keep
+slowing down?*
 
 Neither program touches an operating-system clock. Both run on any machine
 with a C11 compiler and Python 3.
