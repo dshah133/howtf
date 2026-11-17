@@ -1,0 +1,33 @@
+MODEL: pending-slew ledger, one step per second.
+Step rule: 5000 us beyond 1 s pending, 500 us beyond 500 us, else the rest.
+step_us   broken_subtracts   fixed_subtracts
+  -5000         4294962296             -5000
+   -500         4294966796              -500
+     -1         4294967295                -1
+      0                  0                 0
+      1                  1                 1
+    500                500               500
+   5000               5000              5000
+
+Request: -300 us. Nothing replaces the pending amount.
+second   broken_step_us   broken_pending_us   fixed_step_us   fixed_pending_us
+     1             -300         -4294967296            -300                  0
+     2            -5000         -8589929592               0                  0
+     3            -5000        -12884891888               0                  0
+    72            -5000       -309237290312               0                  0
+  3600            -5000     -15461864270600               0                  0
+clock slowed after 3600 s: broken 17.995300 s, fixed 0.000300 s
+
+Published sample, ESXi 7.0 U3o release note (PR 3246132):
+  adjtime() (usec)            : -309237290312
+  -72 * 2^32 + 71 * 5000      : -309237290312
+  model, 72 s, broken helper  : -309237290312  (all 500 requests from -500 to -1 us)
+  tick adjustment (nsec/sec)  : -4987251 published; 12888 + -140 + -5000000 = -4987252 modeled
+
+PASS: 7 signed cases; 26 trajectory cases; 35 cadence cases; published value reproduced; conservation; step invariant; closed-form oracle.
+
+immediate       : integrated =  -0.530 us; difference =  +0.000 us
+1 s callback    : integrated =  +1.000 us; difference =  +1.530 us
+100 ms callback : integrated =  -0.400 us; difference =  +0.130 us
+10 ms callback  : integrated =  -0.520 us; difference =  +0.010 us
+PASS: four analytic areas and event-aligned control case.

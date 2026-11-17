@@ -1,0 +1,4 @@
+signed_clock.c:47:26: warning: implicit conversion changes signedness: 'int32_t' (aka 'int') to 'uint32_t' (aka 'unsigned int') [-Wsign-conversion]
+   47 |     uint32_t temporary = step_us; /* deliberate bug and compiler warning */
+      |              ~~~~~~~~~   ^~~~~~~
+1 warning generated.

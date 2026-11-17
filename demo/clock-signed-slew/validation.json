@@ -1,0 +1,23 @@
+{
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "python": "3.14.6",
+  "model_pass_line": "PASS: 7 signed cases; 26 trajectory cases; 35 cadence cases; published value reproduced; conservation; step invariant; closed-form oracle.",
+  "cadence_pass_line": "PASS: four analytic areas and event-aligned control case.",
+  "published_source": "ESXi 7.0 Update 3o release notes, PR 3246132; Broadcom KB 312016",
+  "checks": [
+    "Signed step preserved by the fixed ledger update",
+    "Every tested negative step is off by 2^32 in the broken ledger update",
+    "Published adjtime() value reproduced after 72 steps from any request of -500 to -1 us",
+    "Published tick adjustment reproduced to within 1 ns/s",
+    "Step invariant holds on the fixed path and fails on the first broken negative step",
+    "Applied-plus-remaining conservation",
+    "Closed-form finish-time oracle on the fixed path",
+    "A step spread over 1, 7, 10, 100, or 1000 callbacks sums to the same step",
+    "Four analytic application-delay integrals",
+    "Event-aligned application matches immediate application",
+    "Expected compiler sign-conversion diagnostic",
+    "Ordinary UBSan does not diagnose this defined conversion"
+  ],
+  "scope": "Numeric models only; no OS clock, ESXi, NIC, daemon, or migration test.",
+  "ubsan_stderr": ""
+}
